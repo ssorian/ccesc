@@ -1,0 +1,828 @@
+// ============================================================================
+// PLATAFORMA DE CONTROL ESCOLAR — NORMALES DEL ESTADO DE MÉXICO
+// Schema corregido: integra tu base + reglas de negocio faltantes
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  ADMIN
+  INSTITUTION
+  TEACHER
+  STUDENT
+}
+
+enum GroupType {
+  CAREER_SEMESTER // Grupo normal de semestre (1-A, 3-B)
+  WORKSHOP // Taller o grupo especial
+  INDIVIDUAL // Recursamiento individual u otro caso
+}
+
+enum CourseType {
+  EXCLUSIVE // Obligatoria (parte de la malla curricular)
+  FREE // Optativa (pool de la escuela, cualquier semestre)
+}
+
+enum EnrollmentStatus {
+  ENROLLED
+  PASSED
+  FAILED
+}
+
+enum StudentStatus {
+  REGULAR
+  FAILED
+  DROPOUT
+  TEMPORARY_LEAVE
+  GRADUATED
+}
+
+enum TeacherStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ApplicantStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum SchoolYearStatus {
+  PLANNED
+  ACTIVE
+  CLOSED
+}
+
+enum EvaluationPeriodStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+}
+
+enum GradeType {
+  ORDINARY
+  EXTRAORDINARY
+}
+
+enum PromotionStatus {
+  PROMOTED
+  PROMOTED_WITH_DEBT
+  RETAINED
+  PENDING
+}
+
+// ============================================================================
+// USUARIOS
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  lastName      String?
+  email         String
+  emailVerified Boolean
+  image         String?
+  role          UserRole  @default(STUDENT)
+  sessions      Session[]
+  accounts      Account[]
+
+  // Denormalizado: institutionId directo para filtro multi-tenant sin joins
+  // Se asigna al crear Teacher/Student/Institution. null para ADMIN.
+  institutionId String?
+
+  student     Student?
+  teacher     Teacher?
+  institution Institution?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([email])
+  @@index([institutionId])
+  @@index([role])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+}
+
+// ============================================================================
+// INSTITUCIÓN (ESCUELA)
+// ============================================================================
+
+model Institution {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  slug                   String  @unique
+  address                String?
+  enableGlobalEvaluation Boolean @default(false)
+  // Peso de la evaluación global en la calificación final (0.0 a 1.0)
+  // finalGrade = (unitsAverage × (1 - globalEvaluationWeight)) + (globalEvaluationGrade × globalEvaluationWeight)
+  // Solo se usa si enableGlobalEvaluation = true
+  globalEvaluationWeight Float   @default(0.4)
+
+  groups             Group[]
+  students           Student[]
+  teachers           Teacher[]
+  institutionCareers InstitutionCareer[]
+  optionalCourses    InstitutionOptionalCourse[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model InstitutionCareer {
+  id String @id @default(cuid())
+
+  institutionId String
+  careerId      String
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  career      Career      @relation(fields: [careerId], references: [id], onDelete: Cascade)
+
+  applicants Applicant[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([institutionId, careerId])
+  @@index([careerId])
+}
+
+// Pool de optativas por institución (sin semestre fijo)
+model InstitutionOptionalCourse {
+  id String @id @default(cuid())
+
+  institutionId String
+  courseId      String
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  course      Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([institutionId, courseId])
+}
+
+// ============================================================================
+// CATÁLOGOS ACADÉMICOS
+// ============================================================================
+
+model Career {
+  id             String  @id @default(cuid())
+  name           String
+  code           String  @unique
+  description    String?
+  totalSemesters Int     @default(8)
+
+  courses            Course[]
+  groups             Group[]
+  institutionCareers InstitutionCareer[]
+  students           Student[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Course {
+  id              String     @id @default(cuid())
+  name            String
+  code            String     @unique
+  description     String?
+  credits         Float
+  hours           Int
+  courseType      CourseType @default(EXCLUSIVE)
+  evaluationCount Int        @default(3)
+  // Mínimo de unidades requeridas para que el curso sea operable (validación en app)
+  minUnits        Int        @default(2)
+
+  // Posición en malla (solo para EXCLUSIVE)
+  careerId String?
+  career   Career? @relation(fields: [careerId], references: [id])
+  semester Int?
+
+  // Unidades de evaluación
+  units Unit[] @relation("CourseUnits")
+
+  // Materias seriadas
+  prerequisites   CoursePrerequisite[] @relation("CourseMain")
+  prerequisiteFor CoursePrerequisite[] @relation("CoursePrereq")
+
+  // Relaciones operativas
+  groupCourses         GroupCourse[]
+  enrollments          Enrollment[]                @relation("CourseEnrollments")
+  academicHistories    AcademicHistory[]           @relation("CourseHistory")
+  teacherGroups        TeacherGroup[]
+  institutionOptionals InstitutionOptionalCourse[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([careerId, semester])
+  @@index([courseType])
+}
+
+model Unit {
+  id          String    @id @default(cuid())
+  name        String
+  unitNumber  Int
+  description String?
+  weight      Float     @default(1.0)
+  // Se asigna cuando el primer enrollment del curso se crea. Después de esto,
+  // no se puede eliminar ni cambiar unitNumber/weight sin migración manual.
+  lockedAt    DateTime?
+
+  courseId String
+  course   Course @relation("CourseUnits", fields: [courseId], references: [id], onDelete: Cascade)
+
+  unitGrades  UnitGrade[]
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([courseId, unitNumber])
+  @@index([courseId])
+}
+
+// Materias seriadas
+model CoursePrerequisite {
+  id             String @id @default(cuid())
+  courseId       String
+  prerequisiteId String
+
+  course       Course @relation("CourseMain", fields: [courseId], references: [id])
+  prerequisite Course @relation("CoursePrereq", fields: [prerequisiteId], references: [id])
+
+  @@unique([courseId, prerequisiteId])
+}
+
+// ============================================================================
+// CICLOS ESCOLARES
+// ============================================================================
+
+// Ciclo escolar GLOBAL (calendario SEP compartido por todas las instituciones).
+// Las ventanas de evaluación se manejan por institución en EvaluationPeriod.
+// INVARIANTE: Solo puede haber 1 SchoolYear con status=ACTIVE a la vez.
+// Esto se valida en la server action de activación (no hay partial unique index en Prisma).
+model SchoolYear {
+  id        String           @id @default(cuid())
+  name      String // "2025-2026 Semestre Impar"
+  startDate DateTime
+  endDate   DateTime
+  status    SchoolYearStatus @default(PLANNED)
+
+  groups            Group[]
+  enrollments       Enrollment[]
+  evaluationPeriods EvaluationPeriod[]
+  promotionRecords  PromotionRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+// Controla ventanas de captura de calificaciones (global — no es por institución)
+model EvaluationPeriod {
+  id               String                 @id @default(cuid())
+  schoolYearId     String
+  name             String
+  evaluationNumber Int
+  isExtraordinary  Boolean                @default(false)
+  status           EvaluationPeriodStatus @default(SCHEDULED)
+  openDate         DateTime?
+  closeDate        DateTime?
+
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id])
+
+  unitGrades UnitGrade[]
+  auditLogs  EvaluationPeriodAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolYearId, evaluationNumber, isExtraordinary])
+  @@index([schoolYearId, status])
+}
+
+// Auditoría de cambios de estado en períodos de evaluación (reaperturas, cierres)
+model EvaluationPeriodAuditLog {
+  id String @id @default(cuid())
+
+  evaluationPeriodId String
+  evaluationPeriod   EvaluationPeriod @relation(fields: [evaluationPeriodId], references: [id], onDelete: Cascade)
+
+  modifiedById   String // userId del que hizo el cambio
+  previousStatus EvaluationPeriodStatus
+  newStatus      EvaluationPeriodStatus
+  reason         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([evaluationPeriodId])
+  @@index([modifiedById])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ASPIRANTES
+// ============================================================================
+
+model Applicant {
+  id String @id @default(cuid())
+
+  name     String
+  lastName String
+  email    String
+  curp     String @unique
+  age      Int
+
+  phone        String?
+  state        String
+  municipality String
+  neighborhood String
+  street       String
+  number       String
+
+  institutionCareerId String
+  institutionCareer   InstitutionCareer @relation(fields: [institutionCareerId], references: [id])
+
+  status ApplicantStatus @default(PENDING)
+
+  studentId String?  @unique
+  student   Student? @relation(fields: [studentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([institutionCareerId, status])
+}
+
+// ============================================================================
+// ESTUDIANTES
+// ============================================================================
+
+model Student {
+  id           String        @id @default(cuid())
+  enrollmentId String        @unique // Matrícula
+  curp         String        @unique
+  birthDay     DateTime
+  status       StudentStatus @default(REGULAR)
+
+  phone        String?
+  state        String?
+  municipality String?
+  neighborhood String?
+  street       String?
+  number       String?
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  careerId String?
+  career   Career? @relation(fields: [careerId], references: [id])
+
+  currentSemester   Int @default(1)
+  // Materias actualmente reprobadas sin recursar/aprobar. Se decrementa al aprobar recursamiento.
+  // >= 4 → escuela evalúa baja. Se recalcula en cada cierre de ciclo.
+  failedCourseCount Int @default(0)
+
+  enrollments      Enrollment[]
+  academicHistory  AcademicHistory[]
+  studentGroups    StudentGroup[]
+  promotionRecords PromotionRecord[]
+
+  applicant Applicant?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([careerId])
+  @@index([institutionId])
+  @@index([currentSemester])
+  @@index([status])
+}
+
+// ============================================================================
+// MAESTROS
+// ============================================================================
+
+model Teacher {
+  id         String        @id @default(cuid())
+  employeeId String        @unique
+  department String
+  status     TeacherStatus @default(ACTIVE)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+
+  teacherGroups         TeacherGroup[]
+  assignedUnitGrades    UnitGrade[]    @relation("AssignedByTeacher")
+  registeredAttendances Attendance[]   @relation("RegisteredByTeacher")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([institutionId])
+  @@index([status])
+}
+
+// ============================================================================
+// GRUPOS
+// ============================================================================
+
+model Group {
+  id        String    @id @default(cuid())
+  name      String
+  groupType GroupType
+  semester  Int?
+
+  careerId String?
+  career   Career? @relation(fields: [careerId], references: [id])
+
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  // NUEVO: anclado a ciclo escolar en vez de period string
+  schoolYearId String
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id])
+
+  groupCourses          GroupCourse[]
+  teacherGroups         TeacherGroup[]
+  studentGroups         StudentGroup[]
+  enrollments           Enrollment[]
+  enrollmentRequirement EnrollmentRequirement?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([institutionId, name, schoolYearId])
+  @@index([institutionId])
+  @@index([careerId])
+  @@index([groupType])
+  @@index([schoolYearId])
+}
+
+// Materias asignadas a un grupo (obligatorias + optativas + recursamiento)
+model GroupCourse {
+  id       String @id @default(cuid())
+  groupId  String
+  courseId String
+
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, courseId])
+  @@index([groupId])
+  @@index([courseId])
+}
+
+model EnrollmentRequirement {
+  id      String @id @default(cuid())
+  groupId String @unique
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  minSemester     Int?
+  careerId        String?
+  maxCapacity     Int?
+  enrollmentStart DateTime?
+  enrollmentEnd   DateTime?
+  isOpen          Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StudentGroup {
+  id String @id @default(cuid())
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, groupId])
+  @@index([studentId])
+  @@index([groupId])
+}
+
+model TeacherGroup {
+  id String @id @default(cuid())
+
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  courseId String?
+  course   Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  role String @default("TITULAR")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teacherId, groupId, courseId])
+  @@index([teacherId])
+  @@index([groupId])
+  @@index([courseId])
+}
+
+// ============================================================================
+// INSCRIPCIONES
+// ============================================================================
+
+model Enrollment {
+  id String @id @default(cuid())
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation("CourseEnrollments", fields: [courseId], references: [id], onDelete: Cascade)
+
+  groupId String?
+  group   Group?  @relation(fields: [groupId], references: [id])
+
+  // NUEVO: anclado a ciclo escolar
+  schoolYearId String
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id])
+
+  status EnrollmentStatus @default(ENROLLED)
+
+  globalEvaluationGrade Float?
+  unitsAverage          Float?
+  finalGrade            Float?
+
+  unitGrades  UnitGrade[]
+  attendances Attendance[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([studentId, courseId, schoolYearId])
+  @@index([studentId])
+  @@index([courseId])
+  @@index([groupId])
+  @@index([status])
+  @@index([schoolYearId])
+}
+
+// ============================================================================
+// CALIFICACIONES
+// ============================================================================
+
+model UnitGrade {
+  id String @id @default(cuid())
+
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  unitId String
+  unit   Unit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  // Vínculo directo al período en que se capturó (null = aún sin calificación)
+  evaluationPeriodId String?
+  evaluationPeriod   EvaluationPeriod? @relation(fields: [evaluationPeriodId], references: [id])
+
+  grade     Float?    // null = sin calificación registrada
+  gradeType GradeType @default(ORDINARY)
+
+  assignedById String?
+  assignedBy   Teacher? @relation("AssignedByTeacher", fields: [assignedById], references: [id])
+
+  comments String?
+
+  // Optimistic locking: el frontend envía el version que leyó,
+  // el update falla si otro write incrementó el version primero
+  version Int @default(0)
+
+  // Auditoría
+  auditLogs UnitGradeAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ordinaria y extraordinaria son registros separados
+  @@unique([enrollmentId, unitId, gradeType])
+  @@index([enrollmentId])
+  @@index([unitId])
+  @@index([evaluationPeriodId])
+  @@index([assignedById])
+  @@index([gradeType])
+}
+
+// NUEVO: Auditoría de calificaciones
+model UnitGradeAuditLog {
+  id String @id @default(cuid())
+
+  unitGradeId String
+  unitGrade   UnitGrade @relation(fields: [unitGradeId], references: [id], onDelete: Cascade)
+
+  oldGrade Float?
+  newGrade Float?
+  userId   String?
+  reason   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([unitGradeId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ASISTENCIA
+// ============================================================================
+
+model Attendance {
+  id String @id @default(cuid())
+
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  unitId String
+  unit   Unit   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  sessionDate DateTime
+  present     Boolean  @default(false)
+  justified   Boolean  @default(false)
+
+  registeredById String
+  registeredBy   Teacher @relation("RegisteredByTeacher", fields: [registeredById], references: [id])
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([enrollmentId, unitId, sessionDate])
+  @@index([enrollmentId])
+  @@index([unitId])
+  @@index([sessionDate])
+  @@index([registeredById])
+}
+
+// ============================================================================
+// HISTORIAL ACADÉMICO (SNAPSHOT)
+// ============================================================================
+
+model AcademicHistory {
+  id String @id @default(cuid())
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation("CourseHistory", fields: [courseId], references: [id])
+
+  courseName    String
+  courseCode    String
+  courseCredits Float
+
+  schoolYearName String
+  semester       Int
+
+  finalGrade            Float
+  passed                Boolean
+  status                EnrollmentStatus
+  wasExtraordinary      Boolean          @default(false)
+  globalEvaluationGrade Float?
+  unitsAverage          Float
+
+  unitGradesDetail     Json?
+  attendancePercentage Float?
+  notes                String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, courseId, schoolYearName])
+  @@index([studentId])
+  @@index([courseId])
+  @@index([semester])
+  @@index([passed])
+}
+
+// ============================================================================
+// PROMOCIÓN DE SEMESTRE
+// ============================================================================
+
+model PromotionRecord {
+  id String @id @default(cuid())
+
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  schoolYearId String
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id])
+
+  fromSemester  Int
+  toSemester    Int?
+  status        PromotionStatus
+  failedCourses Int             @default(0)
+  notes         String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, schoolYearId])
+  @@index([studentId])
+  @@index([schoolYearId])
+}
+
+// ============================================================================
+// AUDITORÍA GENÉRICA
+// ============================================================================
+
+// Registro de operaciones críticas del sistema (admisiones, promociones,
+// cierres de ciclo, cambios de status de alumno, etc.)
+// No reemplaza UnitGradeAuditLog ni EvaluationPeriodAuditLog — esos son específicos.
+model SystemAuditLog {
+  id String @id @default(cuid())
+
+  userId        String // Quién ejecutó la acción
+  institutionId String? // Contexto multi-tenant (null para acciones de Admin)
+  action        String // "APPLICANT_ADMITTED", "STUDENT_DROPPED", "SCHOOL_YEAR_CLOSED", etc.
+  entityType    String // "Applicant", "Student", "SchoolYear", etc.
+  entityId      String // ID del registro afectado
+  metadata      Json? // Datos adicionales: { fromStatus, toStatus, relatedIds, ... }
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([institutionId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

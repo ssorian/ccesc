@@ -1,0 +1,6 @@
+export { getInstitutions } from "./getInstitutions"
+export { getInstitutionById } from "./getInstitutionById"
+export { createInstitution } from "./createInstitution"
+export { updateInstitution } from "./updateInstitution"
+export { deleteInstitution } from "./deleteInstitution"
+export { toggleInstitutionStatus } from "./toggleInstitutionStatus"
