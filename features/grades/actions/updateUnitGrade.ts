@@ -1,10 +1,12 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { GradeType } from "@/lib/types"
+
+export const PASS_THRESHOLD = 6.0
 
 const schema = z.object({
     enrollmentId: z.string(),
@@ -21,93 +23,160 @@ export const updateUnitGrade = authAction(schema, async (
     { enrollmentId, unitId, unitGradeId, version, grade, gradeType = "ORDINARY", comments, reason },
     session
 ) => {
-    const [{ rows: unitRows }, { rows: enrollRows }] = await Promise.all([
-        db.query(`SELECT "unitNumber" FROM "Unit" WHERE id = $1`, [unitId]),
-        db.query(
-            `SELECT e."schoolYearId",
-                i.id AS institution_id, i."enableGlobalEvaluation", i."globalEvaluationWeight"
-             FROM "Enrollment" e
-             LEFT JOIN "Group" g ON g.id = e."groupId"
-             LEFT JOIN "Institution" i ON i.id = g."institutionId"
-             WHERE e.id = $1`,
-            [enrollmentId],
-        ),
+    const isExtraordinary = gradeType === "EXTRAORDINARY"
+
+    const [unit, enrollment] = await Promise.all([
+        prisma.unit.findUnique({ where: { id: unitId }, select: { unitNumber: true } }),
+        prisma.enrollment.findUnique({
+            where: { id: enrollmentId },
+            select: {
+                studentId: true,
+                schoolYearId: true,
+                group: {
+                    select: {
+                        institution: {
+                            select: { id: true, enableGlobalEvaluation: true, globalEvaluationWeight: true },
+                        },
+                    },
+                },
+            },
+        }),
     ])
 
-    if (unitRows.length === 0) throw new Error("UNIT_NOT_FOUND")
-    if (enrollRows.length === 0) throw new Error("ENROLLMENT_NOT_FOUND")
-    if (!enrollRows[0].institution_id) throw new Error("ENROLLMENT_GROUP_NOT_FOUND")
+    if (!unit) throw new Error("UNIT_NOT_FOUND")
+    if (!enrollment) throw new Error("ENROLLMENT_NOT_FOUND")
+    if (!enrollment.group?.institution) throw new Error("ENROLLMENT_GROUP_NOT_FOUND")
 
-    const { schoolYearId } = enrollRows[0]
-    const unitNumber = unitRows[0].unitNumber
+    // Extraordinary: validate student failed ordinary
+    if (isExtraordinary) {
+        const ordinaryGrades = await prisma.unitGrade.findMany({
+            where: { enrollmentId, gradeType: "ORDINARY", grade: { not: null } },
+            include: { unit: { select: { weight: true } } },
+        })
 
-    const { rows: periodRows } = await db.query(
-        `SELECT id, status FROM "EvaluationPeriod"
-         WHERE "schoolYearId" = $1 AND "evaluationNumber" = $2 AND "isExtraordinary" = false`,
-        [schoolYearId, unitNumber],
-    )
-    if (periodRows.length === 0) throw new Error("PERIOD_NOT_FOUND")
-    if (periodRows[0].status !== "OPEN") throw new Error("PERIOD_CLOSED")
+        if (ordinaryGrades.length === 0) throw new Error("EXTRAORDINARY_NOT_ELIGIBLE")
 
-    const periodId = periodRows[0].id
+        const institution = enrollment.group!.institution!
+        const totalWeight = ordinaryGrades.reduce((acc, g) => acc + Number(g.unit.weight), 0)
+        const weightedSum = ordinaryGrades.reduce((acc, g) => acc + Number(g.grade!) * Number(g.unit.weight), 0)
+        let ordinaryAverage = totalWeight > 0 ? weightedSum / totalWeight : null
 
-    const { rows: existingRows } = await db.query(
-        `SELECT grade FROM "UnitGrade" WHERE id = $1`,
-        [unitGradeId],
-    )
-    const oldGrade = existingRows[0]?.grade ?? null
-
-    const result = await withTransaction(async (client) => {
-        // OCC update — fails silently if version mismatch (0 rows)
-        const { rows: updated, rowCount } = await client.query(
-            `UPDATE "UnitGrade"
-             SET grade = $1, comments = $2, "assignedById" = $3, "evaluationPeriodId" = $4,
-                 version = version + 1, "updatedAt" = NOW()
-             WHERE id = $5 AND version = $6
-             RETURNING *`,
-            [grade, comments ?? null, session.user.id, periodId, unitGradeId, version],
-        )
-        if (rowCount === 0) throw new Error("OPTIMISTIC_LOCK_ERROR")
-
-        await client.query(
-            `INSERT INTO "UnitGradeAuditLog" (id, "unitGradeId", "oldGrade", "newGrade", "userId", reason, "createdAt")
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-            [crypto.randomUUID(), unitGradeId, oldGrade, grade, session.user.id, reason ?? null],
-        )
-
-        // Recalculate unitsAverage
-        const { rows: allGrades } = await client.query(
-            `SELECT ug.grade, u.weight
-             FROM "UnitGrade" ug
-             JOIN "Unit" u ON u.id = ug."unitId"
-             WHERE ug."enrollmentId" = $1 AND ug."gradeType" = 'ORDINARY' AND ug.grade IS NOT NULL`,
-            [enrollmentId],
-        )
-
-        const totalWeight = allGrades.reduce((acc, g) => acc + Number(g.weight), 0)
-        const weightedSum = allGrades.reduce((acc, g) => acc + Number(g.grade) * Number(g.weight), 0)
-        const unitsAverage = totalWeight > 0 ? weightedSum / totalWeight : null
-
-        const institution = enrollRows[0]
-        let finalGrade: number | null = unitsAverage
-
-        if (institution.enableGlobalEvaluation && unitsAverage != null) {
-            const { rows: enrollFull } = await client.query(
-                `SELECT "globalEvaluationGrade" FROM "Enrollment" WHERE id = $1`,
-                [enrollmentId],
-            )
-            if (enrollFull[0]?.globalEvaluationGrade != null) {
+        if (institution.enableGlobalEvaluation && ordinaryAverage != null) {
+            const enroll = await prisma.enrollment.findUnique({
+                where: { id: enrollmentId },
+                select: { globalEvaluationGrade: true },
+            })
+            if (enroll?.globalEvaluationGrade != null) {
                 const w = Number(institution.globalEvaluationWeight)
-                finalGrade = unitsAverage * (1 - w) + Number(enrollFull[0].globalEvaluationGrade) * w
+                ordinaryAverage = ordinaryAverage * (1 - w) + Number(enroll.globalEvaluationGrade) * w
             }
         }
 
-        await client.query(
-            `UPDATE "Enrollment" SET "unitsAverage" = $1, "finalGrade" = $2, "updatedAt" = NOW() WHERE id = $3`,
-            [unitsAverage, finalGrade, enrollmentId],
-        )
+        if (ordinaryAverage === null || ordinaryAverage >= PASS_THRESHOLD) {
+            throw new Error("EXTRAORDINARY_NOT_ELIGIBLE")
+        }
+    }
 
-        return updated[0]
+    // Lookup evaluation period — ordinary uses unit number, extraordinary uses any open extraordinary period
+    const period = isExtraordinary
+        ? await prisma.evaluationPeriod.findFirst({
+            where: { schoolYearId: enrollment.schoolYearId, isExtraordinary: true, status: "OPEN" },
+            select: { id: true, status: true },
+        })
+        : await prisma.evaluationPeriod.findUnique({
+            where: {
+                schoolYearId_evaluationNumber_isExtraordinary: {
+                    schoolYearId: enrollment.schoolYearId,
+                    evaluationNumber: unit.unitNumber,
+                    isExtraordinary: false,
+                },
+            },
+            select: { id: true, status: true },
+        })
+
+    if (!period) throw new Error("PERIOD_NOT_FOUND")
+    if (period.status !== "OPEN") throw new Error("PERIOD_CLOSED")
+
+    const existingGrade = await prisma.unitGrade.findUnique({
+        where: { id: unitGradeId },
+        select: { grade: true },
+    })
+    const oldGrade = existingGrade?.grade ?? null
+
+    const result = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.unitGrade.updateMany({
+            where: { id: unitGradeId, version },
+            data: {
+                grade,
+                comments: comments ?? null,
+                assignedById: session.user.id,
+                evaluationPeriodId: period.id,
+                version: { increment: 1 },
+            },
+        })
+        if (count === 0) throw new Error("OPTIMISTIC_LOCK_ERROR")
+
+        await tx.unitGradeAuditLog.create({
+            data: {
+                unitGradeId,
+                oldGrade,
+                newGrade: grade,
+                userId: session.user.id,
+                reason: reason ?? null,
+            },
+        })
+
+        if (isExtraordinary) {
+            // Recalculate extraordinary weighted average
+            const allExtraordinaryGrades = await tx.unitGrade.findMany({
+                where: { enrollmentId, gradeType: "EXTRAORDINARY", grade: { not: null } },
+                include: { unit: { select: { weight: true } } },
+            })
+
+            const totalWeight = allExtraordinaryGrades.reduce((acc, g) => acc + Number(g.unit.weight), 0)
+            const weightedSum = allExtraordinaryGrades.reduce((acc, g) => acc + Number(g.grade!) * Number(g.unit.weight), 0)
+            const extraordinaryAverage = totalWeight > 0 ? weightedSum / totalWeight : null
+
+            if (extraordinaryAverage !== null) {
+                await tx.enrollment.update({
+                    where: { id: enrollmentId },
+                    data: { finalGrade: extraordinaryAverage },
+                })
+            }
+
+            return tx.unitGrade.findUnique({ where: { id: unitGradeId } })
+        }
+
+        // Ordinary: recalculate weighted average across all entered ordinary grades
+        const allGrades = await tx.unitGrade.findMany({
+            where: { enrollmentId, gradeType: "ORDINARY", grade: { not: null } },
+            include: { unit: { select: { weight: true } } },
+        })
+
+        const totalWeight = allGrades.reduce((acc, g) => acc + Number(g.unit.weight), 0)
+        const weightedSum = allGrades.reduce((acc, g) => acc + Number(g.grade!) * Number(g.unit.weight), 0)
+        const unitsAverage = totalWeight > 0 ? weightedSum / totalWeight : null
+
+        const institution = enrollment.group!.institution!
+        let finalGrade: number | null = unitsAverage
+
+        if (institution.enableGlobalEvaluation && unitsAverage != null) {
+            const enroll = await tx.enrollment.findUnique({
+                where: { id: enrollmentId },
+                select: { globalEvaluationGrade: true },
+            })
+            if (enroll?.globalEvaluationGrade != null) {
+                const w = Number(institution.globalEvaluationWeight)
+                finalGrade = unitsAverage * (1 - w) + Number(enroll.globalEvaluationGrade) * w
+            }
+        }
+
+        await tx.enrollment.update({
+            where: { id: enrollmentId },
+            data: { unitsAverage, finalGrade },
+        })
+
+        return tx.unitGrade.findUnique({ where: { id: unitGradeId } })
     })
 
     revalidatePath("/profesores/calificaciones")

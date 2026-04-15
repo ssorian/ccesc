@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -19,26 +19,21 @@ const schema = z.object({
 })
 
 export const updateCourse = authAction(schema, async ({ id, ...data }) => {
-    const sets: string[] = [`"updatedAt" = NOW()`]
-    const params: unknown[] = []
-    let i = 1
-
-    if (data.name !== undefined) { sets.push(`name = $${i++}`); params.push(data.name) }
-    if (data.description !== undefined) { sets.push(`description = $${i++}`); params.push(data.description) }
-    if (data.credits !== undefined) { sets.push(`credits = $${i++}`); params.push(data.credits) }
-    if (data.hours !== undefined) { sets.push(`hours = $${i++}`); params.push(data.hours) }
-    if (data.evaluationCount !== undefined) { sets.push(`"evaluationCount" = $${i++}`); params.push(data.evaluationCount) }
-    if (data.courseType !== undefined) { sets.push(`"courseType" = $${i++}`); params.push(data.courseType) }
-    if (data.semester !== undefined) { sets.push(`semester = $${i++}`); params.push(data.semester) }
-    if (data.careerId !== undefined) { sets.push(`"careerId" = $${i++}`); params.push(data.careerId) }
-
-    params.push(id)
-    const { rows } = await db.query(
-        `UPDATE "Course" SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
-        params,
-    )
+    const course = await prisma.course.update({
+        where: { id },
+        data: {
+            ...(data.name !== undefined && { name: data.name }),
+            ...(data.description !== undefined && { description: data.description }),
+            ...(data.credits !== undefined && { credits: data.credits }),
+            ...(data.hours !== undefined && { hours: data.hours }),
+            ...(data.evaluationCount !== undefined && { evaluationCount: data.evaluationCount }),
+            ...(data.courseType !== undefined && { courseType: data.courseType }),
+            ...(data.semester !== undefined && { semester: data.semester }),
+            ...(data.careerId !== undefined && { careerId: data.careerId }),
+        },
+    })
 
     revalidatePath("/admin/cursos")
     revalidatePath(`/admin/cursos/${id}`)
-    return rows[0]
+    return course
 })

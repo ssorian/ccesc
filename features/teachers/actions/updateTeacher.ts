@@ -1,6 +1,6 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -17,24 +17,29 @@ const schema = z.object({
 })
 
 export const updateTeacher = authAction(schema, async ({ id, name, lastName, email, employeeId, department, status }) => {
-    const teacher = await withTransaction(async (client) => {
-        const { rows: tr } = await client.query(`SELECT "userId" FROM "Teacher" WHERE id = $1`, [id])
-        if (tr.length === 0) throw new Error("TEACHER_NOT_FOUND")
-        const { userId } = tr[0]
+    const teacher = await prisma.$transaction(async (tx) => {
+        const existing = await tx.teacher.findUnique({ where: { id }, select: { userId: true } })
+        if (!existing) throw new Error("TEACHER_NOT_FOUND")
 
-        const uSets: string[] = [`"updatedAt" = NOW()`]; const uP: unknown[] = []; let ui = 1
-        if (name != null) { uSets.push(`name = $${ui++}`); uP.push(name) }
-        if (lastName != null) { uSets.push(`"lastName" = $${ui++}`); uP.push(lastName) }
-        if (email != null) { uSets.push(`email = $${ui++}`); uP.push(email) }
-        if (uSets.length > 1) { uP.push(userId); await client.query(`UPDATE "User" SET ${uSets.join(", ")} WHERE id = $${ui}`, uP) }
+        if (name != null || lastName != null || email != null) {
+            await tx.user.update({
+                where: { id: existing.userId },
+                data: {
+                    ...(name != null && { name }),
+                    ...(lastName != null && { lastName }),
+                    ...(email != null && { email }),
+                },
+            })
+        }
 
-        const tSets: string[] = [`"updatedAt" = NOW()`]; const tP: unknown[] = []; let ti = 1
-        if (employeeId != null) { tSets.push(`"employeeId" = $${ti++}`); tP.push(employeeId) }
-        if (department != null) { tSets.push(`department = $${ti++}`); tP.push(department) }
-        if (status != null) { tSets.push(`status = $${ti++}`); tP.push(status) }
-        tP.push(id)
-        const { rows } = await client.query(`UPDATE "Teacher" SET ${tSets.join(", ")} WHERE id = $${ti} RETURNING *`, tP)
-        return rows[0]
+        return tx.teacher.update({
+            where: { id },
+            data: {
+                ...(employeeId != null && { employeeId }),
+                ...(department != null && { department }),
+                ...(status != null && { status }),
+            },
+        })
     })
 
     revalidatePath("/admin/profesores")

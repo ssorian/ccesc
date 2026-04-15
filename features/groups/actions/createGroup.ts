@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -19,34 +19,33 @@ export const createGroup = authAction(schema, async (data, session) => {
     let institutionId = data.institutionId
 
     if (!institutionId) {
-        const { rows } = await db.query(
-            `SELECT "institutionId" FROM "User" WHERE id = $1`,
-            [session.user.id],
-        )
-        institutionId = rows[0]?.institutionId ?? undefined
+        const user = await prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { institutionId: true },
+        })
+        institutionId = user?.institutionId ?? undefined
     }
 
     if (!institutionId) {
-        const { rows } = await db.query(`SELECT id FROM "Institution" WHERE "deletedAt" IS NULL LIMIT 1`)
-        if (rows.length === 0) throw new Error("No hay institución configurada")
-        institutionId = rows[0].id
+        const inst = await prisma.institution.findFirst({
+            where: { deletedAt: null },
+            select: { id: true },
+        })
+        if (!inst) throw new Error("No hay institución configurada")
+        institutionId = inst.id
     }
 
-    const { rows } = await db.query(
-        `INSERT INTO "Group" (id, name, "groupType", semester, "institutionId", "schoolYearId", "careerId", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-         RETURNING *`,
-        [
-            crypto.randomUUID(),
-            data.name,
-            data.groupType,
-            data.semester ?? null,
-            institutionId,
-            data.schoolYearId,
-            data.careerId ?? null,
-        ],
-    )
+    const group = await prisma.group.create({
+        data: {
+            name: data.name,
+            groupType: data.groupType,
+            semester: data.semester ?? null,
+            institutionId: institutionId!,
+            schoolYearId: data.schoolYearId,
+            careerId: data.careerId ?? null,
+        },
+    })
 
     revalidatePath("/admin/grupos")
-    return { success: true, data: rows[0] }
+    return { success: true, data: group }
 })

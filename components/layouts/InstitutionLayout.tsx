@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import {
     GraduationCap,
     LayoutDashboard,
+    TrendingUp,
     UserCog,
     Users,
     UserPlus,
@@ -35,6 +36,11 @@ const adminNav = [
         title: "Aspirantes",
         url: "/institution/aspirantes",
         icon: UserPlus,
+    },
+    {
+        title: "Promociones",
+        url: "/institution/promociones",
+        icon: TrendingUp,
     },
 ];
 

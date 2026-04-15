@@ -1,3 +1,3 @@
 export { getUnitGrades } from "./getUnitGrades"
-export { updateUnitGrade } from "./updateUnitGrade"
+export { updateUnitGrade, PASS_THRESHOLD } from "./updateUnitGrade"
 export { getGroupAuditLogs } from "./getGroupAuditLogs"

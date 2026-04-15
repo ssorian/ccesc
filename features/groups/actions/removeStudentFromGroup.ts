@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -8,11 +8,10 @@ import { z } from "zod"
 export const removeStudentFromGroup = authAction(
     z.object({ groupId: z.string(), studentId: z.string() }),
     async ({ groupId, studentId }) => {
-        const { rows } = await db.query(
-            `DELETE FROM "StudentGroup" WHERE "studentId" = $1 AND "groupId" = $2 RETURNING *`,
-            [studentId, groupId],
-        )
+        const studentGroup = await prisma.studentGroup.delete({
+            where: { studentId_groupId: { studentId, groupId } },
+        })
         revalidatePath(`/admin/grupos/${groupId}`)
-        return { success: true, data: rows[0] }
+        return { success: true, data: studentGroup }
     },
 )

@@ -1,6 +1,6 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -14,18 +14,21 @@ const schema = z.object({
 })
 
 export const updateInstitution = authAction(schema, async ({ id, name, ...rest }) => {
-    const institution = await withTransaction(async (client) => {
+    const institution = await prisma.$transaction(async (tx) => {
         if (name != null) {
-            const { rows: ir } = await client.query(`SELECT "userId" FROM "Institution" WHERE id = $1`, [id])
-            if (ir.length > 0) await client.query(`UPDATE "User" SET name = $1, "updatedAt" = NOW() WHERE id = $2`, [name, ir[0].userId])
+            const inst = await tx.institution.findUnique({ where: { id }, select: { userId: true } })
+            if (inst) {
+                await tx.user.update({ where: { id: inst.userId }, data: { name } })
+            }
         }
-        const sets: string[] = [`"updatedAt" = NOW()`]; const params: unknown[] = []; let i = 1
-        if (rest.slug !== undefined) { sets.push(`slug = $${i++}`); params.push(rest.slug) }
-        if (rest.address !== undefined) { sets.push(`address = $${i++}`); params.push(rest.address) }
-        if (rest.enableGlobalEvaluation !== undefined) { sets.push(`"enableGlobalEvaluation" = $${i++}`); params.push(rest.enableGlobalEvaluation) }
-        params.push(id)
-        const { rows } = await client.query(`UPDATE "Institution" SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`, params)
-        return rows[0]
+        return tx.institution.update({
+            where: { id },
+            data: {
+                ...(rest.slug !== undefined && { slug: rest.slug }),
+                ...(rest.address !== undefined && { address: rest.address }),
+                ...(rest.enableGlobalEvaluation !== undefined && { enableGlobalEvaluation: rest.enableGlobalEvaluation }),
+            },
+        })
     })
     revalidatePath("/admin/instituciones")
     revalidatePath(`/admin/instituciones/${id}`)

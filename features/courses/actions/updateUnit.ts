@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -17,27 +17,19 @@ export const updateUnit = authAction(schema, async ({ unitId, name, weight, desc
         throw new Error("FORBIDDEN")
     }
 
-    const { rows: existing } = await db.query(
-        `SELECT "lockedAt" FROM "Unit" WHERE id = $1`,
-        [unitId],
-    )
-    if (existing.length === 0) throw new Error("UNIT_NOT_FOUND")
-    if (existing[0].lockedAt && weight !== undefined) throw new Error("UNIT_LOCKED")
+    const existing = await prisma.unit.findUnique({ where: { id: unitId }, select: { lockedAt: true } })
+    if (!existing) throw new Error("UNIT_NOT_FOUND")
+    if (existing.lockedAt && weight !== undefined) throw new Error("UNIT_LOCKED")
 
-    const sets: string[] = [`"updatedAt" = NOW()`]
-    const params: unknown[] = []
-    let i = 1
-
-    if (name !== undefined) { sets.push(`name = $${i++}`); params.push(name) }
-    if (weight !== undefined) { sets.push(`weight = $${i++}`); params.push(weight) }
-    if (description !== undefined) { sets.push(`description = $${i++}`); params.push(description) }
-
-    params.push(unitId)
-    const { rows } = await db.query(
-        `UPDATE "Unit" SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
-        params,
-    )
+    const unit = await prisma.unit.update({
+        where: { id: unitId },
+        data: {
+            ...(name !== undefined && { name }),
+            ...(weight !== undefined && { weight }),
+            ...(description !== undefined && { description }),
+        },
+    })
 
     revalidatePath("/admin/cursos")
-    return rows[0]
+    return unit
 })

@@ -1,6 +1,6 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -21,8 +21,11 @@ export const createStudent = authAction(schema, async (data, session) => {
     let targetInstitutionId = data.institutionId
 
     if (!targetInstitutionId && session?.user?.id) {
-        const { rows } = await db.query(`SELECT "institutionId" FROM "User" WHERE id = $1`, [session.user.id])
-        if (rows[0]?.institutionId) targetInstitutionId = rows[0].institutionId
+        const user = await prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { institutionId: true },
+        })
+        if (user?.institutionId) targetInstitutionId = user.institutionId
     }
 
     if (!targetInstitutionId) throw new Error("Se requiere una institución para crear al alumno")
@@ -30,19 +33,26 @@ export const createStudent = authAction(schema, async (data, session) => {
     const finalEnrollmentId = data.enrollmentId || data.matricula
     if (!finalEnrollmentId) throw new Error("La matrícula es requerida")
 
-    const student = await withTransaction(async (client) => {
-        const userId = crypto.randomUUID()
-        await client.query(
-            `INSERT INTO "User" (id, name, "lastName", email, "emailVerified", role, "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, false, 'STUDENT', NOW(), NOW())`,
-            [userId, data.name, data.lastName, data.email],
-        )
-        const { rows } = await client.query(
-            `INSERT INTO "Student" (id, "enrollmentId", curp, "birthDay", "institutionId", "careerId", "userId", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
-            [crypto.randomUUID(), finalEnrollmentId, data.curp ?? "", data.birthDay ?? new Date(), targetInstitutionId, data.careerId ?? null, userId],
-        )
-        return rows[0]
+    const student = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+            data: {
+                name: data.name,
+                lastName: data.lastName,
+                email: data.email,
+                emailVerified: false,
+                role: "STUDENT",
+            },
+        })
+        return tx.student.create({
+            data: {
+                enrollmentId: finalEnrollmentId,
+                curp: data.curp ?? "",
+                birthDay: data.birthDay ?? new Date(),
+                institutionId: targetInstitutionId!,
+                careerId: data.careerId ?? null,
+                userId: user.id,
+            },
+        })
     })
 
     revalidatePath("/admin/alumnos")

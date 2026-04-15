@@ -1,14 +1,15 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 export const deleteInstitution = authAction(z.object({ id: z.string() }), async ({ id }) => {
-    const { rows } = await db.query(
-        `UPDATE "Institution" SET "deletedAt" = NOW(), "updatedAt" = NOW() WHERE id = $1 RETURNING *`, [id],
-    )
+    const institution = await prisma.institution.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+    })
     revalidatePath("/admin/instituciones")
-    return rows[0]
+    return institution
 })

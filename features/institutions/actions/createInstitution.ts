@@ -1,6 +1,6 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -18,26 +18,37 @@ const schema = z.object({
 export const createInstitution = authAction(schema, async (data) => {
     const hashedPassword = data.adminPassword ? await bcrypt.hash(data.adminPassword, 10) : null
 
-    const institution = await withTransaction(async (client) => {
-        const userId = crypto.randomUUID()
-        await client.query(
-            `INSERT INTO "User" (id, name, "lastName", email, "emailVerified", role, "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, false, 'INSTITUTION', NOW(), NOW())`,
-            [userId, data.name, data.adminLastName ?? null, data.adminEmail],
-        )
-        const { rows } = await client.query(
-            `INSERT INTO "Institution" (id, "userId", slug, address, "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING *`,
-            [crypto.randomUUID(), userId, data.slug, data.address ?? null],
-        )
+    const institution = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+            data: {
+                name: data.name,
+                lastName: data.adminLastName ?? null,
+                email: data.adminEmail,
+                emailVerified: false,
+                role: "INSTITUTION",
+            },
+        })
+        const inst = await tx.institution.create({
+            data: {
+                userId: user.id,
+                slug: data.slug,
+                address: data.address ?? null,
+            },
+        })
         if (hashedPassword) {
-            await client.query(
-                `INSERT INTO "Account" (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
-                 VALUES ($1, $2, 'credential', $3, $4, NOW(), NOW())`,
-                [`acc_${Date.now()}`, data.adminEmail, userId, hashedPassword],
-            )
+            await tx.account.create({
+                data: {
+                    id: `acc_${Date.now()}`,
+                    accountId: data.adminEmail,
+                    providerId: "credential",
+                    userId: user.id,
+                    password: hashedPassword,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
+            })
         }
-        return rows[0]
+        return inst
     })
 
     revalidatePath("/admin/instituciones")

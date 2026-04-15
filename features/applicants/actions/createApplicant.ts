@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -13,13 +13,23 @@ const schema = z.object({
 })
 
 export const createApplicant = authAction(schema, async (data) => {
-    const { rows } = await db.query(
-        `INSERT INTO "Applicant" (id, name, "lastName", email, curp, age, phone, state, municipality, neighborhood, street, number, "institutionCareerId", "createdAt", "updatedAt")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW()) RETURNING *`,
-        [crypto.randomUUID(), data.name, data.lastName, data.email, data.curp, data.age,
-         data.phone ?? null, data.state, data.municipality, data.neighborhood, data.street, data.number, data.institutionCareerId],
-    )
+    const applicant = await prisma.applicant.create({
+        data: {
+            name: data.name,
+            lastName: data.lastName,
+            email: data.email,
+            curp: data.curp,
+            age: data.age,
+            phone: data.phone ?? null,
+            state: data.state,
+            municipality: data.municipality,
+            neighborhood: data.neighborhood,
+            street: data.street,
+            number: data.number,
+            institutionCareerId: data.institutionCareerId,
+        },
+    })
     revalidatePath("/institution/aspirantes")
     revalidatePath("/admin/aspirantes")
-    return { success: true, data: rows[0] }
+    return { success: true, data: applicant }
 })

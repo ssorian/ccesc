@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -18,26 +18,19 @@ export const createUnit = authAction(schema, async (data, session) => {
         throw new Error("FORBIDDEN")
     }
 
-    const { rows: courseRows } = await db.query(
-        `SELECT id FROM "Course" WHERE id = $1`,
-        [data.courseId],
-    )
-    if (courseRows.length === 0) throw new Error("COURSE_NOT_FOUND")
+    const course = await prisma.course.findUnique({ where: { id: data.courseId }, select: { id: true } })
+    if (!course) throw new Error("COURSE_NOT_FOUND")
 
-    const { rows } = await db.query(
-        `INSERT INTO "Unit" (id, "courseId", name, "unitNumber", weight, description, "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-         RETURNING *`,
-        [
-            crypto.randomUUID(),
-            data.courseId,
-            data.name,
-            data.unitNumber,
-            data.weight,
-            data.description ?? null,
-        ],
-    )
+    const unit = await prisma.unit.create({
+        data: {
+            courseId: data.courseId,
+            name: data.name,
+            unitNumber: data.unitNumber,
+            weight: data.weight,
+            description: data.description ?? null,
+        },
+    })
 
     revalidatePath("/admin/cursos")
-    return rows[0]
+    return unit
 })

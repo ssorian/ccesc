@@ -1,45 +1,43 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { z } from "zod"
 
 export const getCourseAssignments = authAction(z.object({ groupId: z.string() }), async ({ groupId }) => {
-    const { rows: groupRows } = await db.query(
-        `SELECT "groupType", "careerId", semester FROM "Group" WHERE id = $1`,
-        [groupId],
-    )
-    if (groupRows.length === 0) return { success: true, data: [] }
-    const group = groupRows[0]
+    const group = await prisma.group.findUnique({
+        where: { id: groupId },
+        select: { groupType: true, careerId: true, semester: true },
+    })
+    if (!group) return { success: true, data: [] }
 
-    const { rows: assignRows } = await db.query(
-        `SELECT tg.id, tg."courseId", tg."teacherId",
-            t.id AS t_id, t."employeeId", t.department, t.status AS t_status,
-            tu.id AS tu_id, tu.name AS tu_name, tu."lastName" AS tu_last_name, tu.email AS tu_email
-         FROM "TeacherGroup" tg
-         JOIN "Teacher" t ON t.id = tg."teacherId"
-         JOIN "User" tu ON tu.id = t."userId"
-         WHERE tg."groupId" = $1`,
-        [groupId],
-    )
+    const assignments = await prisma.teacherGroup.findMany({
+        where: { groupId },
+        include: {
+            teacher: {
+                include: {
+                    user: { select: { id: true, name: true, lastName: true, email: true } },
+                },
+            },
+        },
+    })
 
-    const buildTeacher = (r: Record<string, unknown>) => ({
-        id: r.t_id,
-        employeeId: r.employeeId,
-        department: r.department,
-        status: r.t_status,
-        user: { id: r.tu_id, name: r.tu_name, lastName: r.tu_last_name, email: r.tu_email },
+    const buildTeacher = (a: (typeof assignments)[number]) => ({
+        id: a.teacher.id,
+        employeeId: a.teacher.employeeId,
+        department: a.teacher.department,
+        status: a.teacher.status,
+        user: { id: a.teacher.user.id, name: a.teacher.user.name, lastName: a.teacher.user.lastName, email: a.teacher.user.email },
     })
 
     if (group.groupType === "CAREER_SEMESTER" && group.careerId && group.semester) {
-        const { rows: courseRows } = await db.query(
-            `SELECT * FROM "Course" WHERE "careerId" = $1 AND semester = $2 AND "deletedAt" IS NULL`,
-            [group.careerId, group.semester],
-        )
+        const courses = await prisma.course.findMany({
+            where: { careerId: group.careerId, semester: group.semester, deletedAt: null },
+        })
         return {
             success: true,
-            data: courseRows.map((course) => {
-                const assignment = assignRows.find((a) => a.courseId === course.id)
+            data: courses.map((course) => {
+                const assignment = assignments.find((a) => a.courseId === course.id)
                 return {
                     id: assignment?.id ?? course.id,
                     assignmentId: assignment?.id ?? null,
@@ -50,23 +48,19 @@ export const getCourseAssignments = authAction(z.object({ groupId: z.string() })
         }
     }
 
-    const courseIds = [...new Set(assignRows.map((r) => r.courseId).filter(Boolean))]
-    let courseMap: Record<string, unknown> = {}
-    if (courseIds.length > 0) {
-        const { rows: cRows } = await db.query(
-            `SELECT * FROM "Course" WHERE id = ANY($1)`,
-            [courseIds],
-        )
-        for (const c of cRows) courseMap[c.id] = c
-    }
+    const courseIds = [...new Set(assignments.map((a) => a.courseId).filter(Boolean))] as string[]
+    const courses = courseIds.length > 0
+        ? await prisma.course.findMany({ where: { id: { in: courseIds } } })
+        : []
+    const courseMap = Object.fromEntries(courses.map((c) => [c.id, c]))
 
     return {
         success: true,
-        data: assignRows.map((r) => ({
-            id: r.id,
-            assignmentId: r.id,
-            course: courseMap[r.courseId as string] ?? null,
-            teacher: buildTeacher(r),
+        data: assignments.map((a) => ({
+            id: a.id,
+            assignmentId: a.id,
+            course: a.courseId ? courseMap[a.courseId] ?? null : null,
+            teacher: buildTeacher(a),
         })),
     }
 })

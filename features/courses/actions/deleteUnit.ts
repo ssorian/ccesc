@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -10,14 +10,11 @@ export const deleteUnit = authAction(z.object({ unitId: z.string() }), async ({ 
         throw new Error("FORBIDDEN")
     }
 
-    const { rows } = await db.query(
-        `SELECT "lockedAt", "courseId" FROM "Unit" WHERE id = $1`,
-        [unitId],
-    )
-    if (rows.length === 0) throw new Error("UNIT_NOT_FOUND")
-    if (rows[0].lockedAt) throw new Error("UNIT_LOCKED")
+    const unit = await prisma.unit.findUnique({ where: { id: unitId }, select: { lockedAt: true } })
+    if (!unit) throw new Error("UNIT_NOT_FOUND")
+    if (unit.lockedAt) throw new Error("UNIT_LOCKED")
 
-    await db.query(`DELETE FROM "Unit" WHERE id = $1`, [unitId])
+    await prisma.unit.delete({ where: { id: unitId } })
 
     revalidatePath("/admin/cursos")
     return { success: true }

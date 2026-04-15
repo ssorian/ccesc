@@ -1,64 +1,68 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { validateStudentPrerequisites } from "./validateStudentPrerequisites"
 
 export const addStudentToGroup = authAction(
-    z.object({ groupId: z.string(), studentId: z.string() }),
-    async ({ groupId, studentId }) => {
-        const { rows: sgRows } = await db.query(
-            `INSERT INTO "StudentGroup" (id, "studentId", "groupId", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, NOW(), NOW())
-             RETURNING *`,
-            [crypto.randomUUID(), studentId, groupId],
-        )
-        const studentGroup = sgRows[0]
+    z.object({
+        groupId: z.string(),
+        studentId: z.string(),
+        bypassPrerequisites: z.boolean().optional(),
+    }),
+    async ({ groupId, studentId, bypassPrerequisites = false }) => {
+        const group = await prisma.group.findUnique({
+            where: { id: groupId },
+            select: {
+                schoolYearId: true,
+                groupCourses: {
+                    include: {
+                        course: {
+                            include: { units: { select: { id: true, unitNumber: true } } },
+                        },
+                    },
+                },
+            },
+        })
 
-        const { rows: groupRows } = await db.query(
-            `SELECT g."schoolYearId",
-                json_agg(json_build_object(
-                    'courseId', gc."courseId",
-                    'units', (
-                        SELECT json_agg(json_build_object('id', u.id, 'unitNumber', u."unitNumber") ORDER BY u."unitNumber")
-                        FROM "Unit" u WHERE u."courseId" = gc."courseId"
-                    )
-                )) AS "groupCourses"
-             FROM "Group" g
-             JOIN "GroupCourse" gc ON gc."groupId" = g.id
-             WHERE g.id = $1
-             GROUP BY g."schoolYearId"`,
-            [groupId],
-        )
+        // Prerequisite validation (skipped when bypassPrerequisites = true)
+        if (!bypassPrerequisites && group && group.groupCourses.length > 0) {
+            const courseIds = group.groupCourses.map((gc) => gc.courseId)
+            const { blocked } = await validateStudentPrerequisites({ studentId, courseIds })
+            if (blocked.length > 0) {
+                throw Object.assign(new Error("PREREQUISITE_NOT_MET"), { blocked })
+            }
+        }
 
-        if (groupRows.length > 0) {
-            const { schoolYearId, groupCourses } = groupRows[0]
+        const studentGroup = await prisma.studentGroup.create({
+            data: { studentId, groupId },
+        })
 
-            await withTransaction(async (client) => {
-                // Upsert enrollments for each course
-                const enrollmentIds: { courseId: string; enrollmentId: string }[] = []
+        if (group && group.groupCourses.length > 0) {
+            await prisma.$transaction(async (tx) => {
+                for (const gc of group.groupCourses) {
+                    const enrollment = await tx.enrollment.upsert({
+                        where: {
+                            studentId_courseId_schoolYearId: {
+                                studentId,
+                                courseId: gc.courseId,
+                                schoolYearId: group.schoolYearId,
+                            },
+                        },
+                        create: { studentId, courseId: gc.courseId, groupId, schoolYearId: group.schoolYearId },
+                        update: {},
+                    })
 
-                for (const gc of groupCourses) {
-                    const { rows: enRows } = await client.query(
-                        `INSERT INTO "Enrollment" (id, "studentId", "courseId", "groupId", "schoolYearId", "createdAt", "updatedAt")
-                         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-                         ON CONFLICT ("studentId", "courseId", "schoolYearId") DO UPDATE SET "updatedAt" = "Enrollment"."updatedAt"
-                         RETURNING id, "courseId"`,
-                        [crypto.randomUUID(), studentId, gc.courseId, groupId, schoolYearId],
-                    )
-                    enrollmentIds.push({ courseId: gc.courseId, enrollmentId: enRows[0].id })
-
-                    // Seed UnitGrades
-                    const units = gc.units ?? []
-                    for (const unit of units) {
-                        await client.query(
-                            `INSERT INTO "UnitGrade" (id, "enrollmentId", "unitId", "gradeType", version, "createdAt", "updatedAt")
-                             VALUES ($1, $2, $3, 'ORDINARY', 0, NOW(), NOW())
-                             ON CONFLICT ("enrollmentId", "unitId", "gradeType") DO NOTHING`,
-                            [crypto.randomUUID(), enRows[0].id, unit.id],
-                        )
-                    }
+                    await tx.unitGrade.createMany({
+                        data: gc.course.units.map((unit) => ({
+                            enrollmentId: enrollment.id,
+                            unitId: unit.id,
+                            gradeType: "ORDINARY",
+                        })),
+                        skipDuplicates: true,
+                    })
                 }
             })
         }

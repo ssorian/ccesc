@@ -1,15 +1,16 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { z } from "zod"
 
 export const getSchoolYears = authAction(
     z.object({}).default({}),
     async () => {
-        const { rows } = await db.query(
-            `SELECT id, name, status FROM "SchoolYear" ORDER BY "startDate" DESC`,
-        )
-        return rows
+        const schoolYears = await prisma.schoolYear.findMany({
+            select: { id: true, name: true, status: true },
+            orderBy: { startDate: "desc" },
+        })
+        return schoolYears
     },
 )

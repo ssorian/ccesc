@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { CourseType } from "@/lib/types"
 import { revalidatePath } from "next/cache"
@@ -23,24 +23,20 @@ export const createCourse = authAction(createCourseSchema, async (data, session)
         throw new Error("Forbidden: only ADMIN users can create courses")
     }
 
-    const { rows } = await db.query(
-        `INSERT INTO "Course" (id, name, code, description, credits, hours, "evaluationCount", "courseType", semester, "careerId", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-         RETURNING *`,
-        [
-            crypto.randomUUID(),
-            data.name,
-            data.code,
-            data.description ?? null,
-            data.credits,
-            data.hours,
-            data.evaluationCount ?? 3,
-            data.courseType ?? "EXCLUSIVE",
-            data.semester ?? null,
-            data.careerId ?? null,
-        ],
-    )
+    const course = await prisma.course.create({
+        data: {
+            name: data.name,
+            code: data.code,
+            description: data.description ?? null,
+            credits: data.credits,
+            hours: data.hours,
+            evaluationCount: data.evaluationCount ?? 3,
+            courseType: data.courseType ?? "EXCLUSIVE",
+            semester: data.semester ?? null,
+            careerId: data.careerId ?? null,
+        },
+    })
 
     revalidatePath("/admin/cursos")
-    return rows[0]
+    return course
 })

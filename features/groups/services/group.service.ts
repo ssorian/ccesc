@@ -9,4 +9,6 @@ export {
     getCourseAssignments,
     assignTeacherToCourse,
     removeTeacherFromCourse,
+    addRepetitionCourses,
+    validateStudentPrerequisites,
 } from "@/features/groups/actions/group.actions"

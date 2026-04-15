@@ -1,6 +1,6 @@
 "use server"
 
-import db, { withTransaction } from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -28,13 +28,17 @@ export const configurePeriod = authAction(schema, async (data, session) => {
         throw new Error("FORBIDDEN")
     }
 
-    const { rows: existingRows } = await db.query(
-        `SELECT id, status FROM "EvaluationPeriod"
-         WHERE "schoolYearId" = $1 AND "evaluationNumber" = $2 AND "isExtraordinary" = $3`,
-        [data.schoolYearId, data.evaluationNumber, data.isExtraordinary],
-    )
+    const existing = await prisma.evaluationPeriod.findUnique({
+        where: {
+            schoolYearId_evaluationNumber_isExtraordinary: {
+                schoolYearId: data.schoolYearId,
+                evaluationNumber: data.evaluationNumber,
+                isExtraordinary: data.isExtraordinary,
+            },
+        },
+        select: { id: true, status: true },
+    })
 
-    const existing = existingRows[0] ?? null
     const previousStatus = existing?.status ?? null
     const newStatus = data.status
 
@@ -46,55 +50,43 @@ export const configurePeriod = authAction(schema, async (data, session) => {
         ? `Extraordinario ${data.evaluationNumber}`
         : (PERIOD_NAMES[data.evaluationNumber] ?? `Corte ${data.evaluationNumber}`)
 
-    const result = await withTransaction(async (client) => {
+    const result = await prisma.$transaction(async (tx) => {
         if (existing) {
-            const { rows: updated } = await client.query(
-                `UPDATE "EvaluationPeriod"
-                 SET status = $1, "openDate" = $2, "closeDate" = $3, "updatedAt" = NOW()
-                 WHERE id = $4
-                 RETURNING *`,
-                [
-                    newStatus,
-                    data.openDate ? new Date(data.openDate) : null,
-                    data.closeDate ? new Date(data.closeDate) : null,
-                    existing.id,
-                ],
-            )
+            const updated = await tx.evaluationPeriod.update({
+                where: { id: existing.id },
+                data: {
+                    status: newStatus,
+                    openDate: data.openDate ? new Date(data.openDate) : null,
+                    closeDate: data.closeDate ? new Date(data.closeDate) : null,
+                },
+            })
 
             if (previousStatus && previousStatus !== newStatus) {
-                await client.query(
-                    `INSERT INTO "EvaluationPeriodAuditLog" (id, "evaluationPeriodId", "modifiedById", "previousStatus", "newStatus", reason, "createdAt")
-                     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-                    [
-                        crypto.randomUUID(),
-                        existing.id,
-                        session.user.id,
+                await tx.evaluationPeriodAuditLog.create({
+                    data: {
+                        evaluationPeriodId: existing.id,
+                        modifiedById: session.user.id,
                         previousStatus,
                         newStatus,
-                        data.reason?.trim() ?? null,
-                    ],
-                )
+                        reason: data.reason?.trim() ?? null,
+                    },
+                })
             }
 
-            return updated[0]
+            return updated
         }
 
-        const { rows: created } = await client.query(
-            `INSERT INTO "EvaluationPeriod" (id, "schoolYearId", "evaluationNumber", "isExtraordinary", name, status, "openDate", "closeDate", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-             RETURNING *`,
-            [
-                crypto.randomUUID(),
-                data.schoolYearId,
-                data.evaluationNumber,
-                data.isExtraordinary,
+        return tx.evaluationPeriod.create({
+            data: {
+                schoolYearId: data.schoolYearId,
+                evaluationNumber: data.evaluationNumber,
+                isExtraordinary: data.isExtraordinary,
                 name,
-                newStatus,
-                data.openDate ? new Date(data.openDate) : null,
-                data.closeDate ? new Date(data.closeDate) : null,
-            ],
-        )
-        return created[0]
+                status: newStatus,
+                openDate: data.openDate ? new Date(data.openDate) : null,
+                closeDate: data.closeDate ? new Date(data.closeDate) : null,
+            },
+        })
     })
 
     revalidatePath("/admin/periodos")

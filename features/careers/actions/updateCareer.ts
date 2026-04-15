@@ -1,6 +1,6 @@
 "use server"
 
-import db from "@/lib/db"
+import prisma from "@/lib/prisma"
 import { authAction } from "@/lib/auth-action"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -14,16 +14,16 @@ const schema = z.object({
 })
 
 export const updateCareer = authAction(schema, async ({ id, ...data }) => {
-    const sets: string[] = [`"updatedAt" = NOW()`]
-    const params: unknown[] = []
-    let i = 1
-    if (data.name !== undefined) { sets.push(`name = $${i++}`); params.push(data.name) }
-    if (data.code !== undefined) { sets.push(`code = $${i++}`); params.push(data.code) }
-    if (data.description !== undefined) { sets.push(`description = $${i++}`); params.push(data.description) }
-    if (data.totalSemesters !== undefined) { sets.push(`"totalSemesters" = $${i++}`); params.push(data.totalSemesters) }
-    params.push(id)
-    const { rows } = await db.query(`UPDATE "Career" SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`, params)
+    const career = await prisma.career.update({
+        where: { id },
+        data: {
+            ...(data.name !== undefined && { name: data.name }),
+            ...(data.code !== undefined && { code: data.code }),
+            ...(data.description !== undefined && { description: data.description }),
+            ...(data.totalSemesters !== undefined && { totalSemesters: data.totalSemesters }),
+        },
+    })
     revalidatePath("/admin/carreras")
     revalidatePath(`/admin/carreras/${id}`)
-    return rows[0]
+    return career
 })
