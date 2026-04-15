@@ -1,174 +1,200 @@
 "use client"
 
-"use client"
-
 import { useState } from "react"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Pencil } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { toast } from "sonner"
-import { Checkbox } from "@/components/ui/checkbox"
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table"
+import { cn } from "@/lib/utils"
+import type { CourseRow } from "@/features/students/actions/getStudentGrades"
 
 interface StudentGradesViewProps {
-    student: any
+    rows: CourseRow[]
 }
 
-export function StudentGradesView({ student }: StudentGradesViewProps) {
-    const [selectedCourse, setSelectedCourse] = useState<any>(null)
-    const [gradeInput, setGradeInput] = useState<string>("")
-    const [isGlobal, setIsGlobal] = useState(false)
+function fmt(value: number | null | undefined): string {
+    if (value == null) return "—"
+    return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
 
-    const isPending = false;
+export function StudentGradesView({ rows }: StudentGradesViewProps) {
+    const maxUnits = rows.reduce((max, r) => {
+        const highest = r.unitGrades.reduce((m, ug) => Math.max(m, ug.unitNumber), 0)
+        return Math.max(max, r.evaluationCount ?? highest)
+    }, 4)
 
-    // Group enrollments/history by semester
-    // We prioritize AcademicHistory for past records, but we might want to verify against Enrollments
-    // For this view, let's assuming we strictly use AcademicHistory + Current Enrollments?
-    // Or just fetch all courses from the Career plan and map the student's status?
-    // That would be best: "Plan de Estudios" view.
+    const unitTabs = Array.from({ length: maxUnits }, (_, i) => i + 1)
+    const [selectedUnit, setSelectedUnit] = useState<number | "all">("all")
 
-    // However, getting the full plan requires fetching all courses for the career.
-    // The `student` object passed here only has `history` and `enrollments`.
-    // Let's rely on what we have: History + Enrollments merged.
+    const showAll = selectedUnit === "all"
 
-    // Better approach: Show "Semesters" based on the data we have.
-    // Ideally we should fetch the Curriculum (Career -> Courses) and match it.
-    // But for now, let's just list what they have.
+    const visibleRows = showAll
+        ? rows
+        : rows.filter((r) => {
+              const unitCount = r.evaluationCount ?? r.unitGrades.reduce((m, ug) => Math.max(m, ug.unitNumber), 0)
+              return unitCount === 0 || unitCount >= (selectedUnit as number)
+          })
 
-    // Merge history and enrollments unique by courseId?
-    // Actually simpler: iterate history. If mapped to enrollment, fine.
-
-    // Let's create a map of courseId -> { ...data }
-    const courseMap = new Map<string, any>()
-
-    // Process Academic History (Past/Finalized)
-    student.academicHistory.forEach((record: any) => {
-        courseMap.set(record.courseId, { type: 'HISTORY', ...record })
-    })
-
-    // Process Enrollments (Current)
-    // If exists in history, history usually takes precedence if passed?
-    // Or Enrollment is the "live" one.
-    student.enrollments.forEach((enrollment: any) => {
-        if (!courseMap.has(enrollment.courseId)) {
-            courseMap.set(enrollment.courseId, {
-                type: 'ENROLLMENT',
-                ...enrollment,
-                courseName: enrollment.course.name,
-                courseCode: enrollment.course.code,
-                semester: enrollment.course.semester,
-                finalGrade: enrollment.finalGrade || 0,
-                passed: enrollment.status === 'APROBADO',
-            })
+    const statusLabel = (row: CourseRow) => {
+        if (row.type === "enrollment") {
+            if (row.status === "PASSED") return { label: "Aprobado", pass: true }
+            if (row.status === "FAILED") return { label: "Reprobado", pass: false }
+            return { label: "Cursando", pass: null }
         }
-    })
-
-    const courses = Array.from(courseMap.values())
-
-    // Group by Semester
-    const semesters: Record<number, any[]> = {}
-    courses.forEach(course => {
-        const sem = course.semester || 0
-        if (!semesters[sem]) semesters[sem] = []
-        semesters[sem].push(course)
-    })
-
-    const semesterKeys = Object.keys(semesters).map(Number).sort((a, b) => a - b)
-
-    const handleEditClick = (course: any) => {
-        setSelectedCourse(course)
-        setGradeInput(course.finalGrade?.toString() || "0")
-        setIsGlobal(false)
-    }
-
-    const handleSaveGrade = async () => {
-        if (!selectedCourse) return
-
-        const grade = parseFloat(gradeInput)
-        if (isNaN(grade) || grade < 0 || grade > 10) {
-            toast.error("Calificación inválida (0-10)")
-            return
-        }
-
-        toast.success("Calificación actualizada (simulado)");
-        setSelectedCourse(null);
+        return { label: row.passed ? "Aprobado" : "Reprobado", pass: row.passed }
     }
 
     return (
-        <div>
-            {semesterKeys.length === 0 && <p className="text-muted-foreground p-4">No hay registros académicos.</p>}
-            <Accordion type="single" collapsible className="w-full">
-                {semesterKeys.map(sem => (
-                    <AccordionItem key={sem} value={`sem-${sem}`}>
-                        <AccordionTrigger>Semestre {sem}</AccordionTrigger>
-                        <AccordionContent>
-                            <div className="space-y-2">
-                                {semesters[sem].map((course: any) => (
-                                    <div key={course.id || course.courseId} className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-accent/50 transition-colors">
-                                        <div>
-                                            <div className="font-medium">{course.courseName}</div>
-                                            <div className="text-xs text-muted-foreground">{course.courseCode}</div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-right">
-                                                <div className="font-bold text-lg leading-none">{course.finalGrade}</div>
-                                                <Badge variant={course.passed ? ("default" as any) : "destructive"} className={`text-[10px] h-5 mt-1 ${course.passed ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}>
-                                                    {course.passed ? "Aprobado" : "Reprobado"}
-                                                </Badge>
-                                            </div>
-                                            <Button size="icon" variant="ghost" onClick={() => handleEditClick(course)}>
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                ))}
-            </Accordion>
+        <div className="space-y-4">
+            {unitTabs.length > 0 && (
+                <Tabs
+                    value={String(selectedUnit)}
+                    onValueChange={(v) => setSelectedUnit(v === "all" ? "all" : Number(v))}
+                >
+                    <TabsList>
+                        <TabsTrigger value="all">Todas</TabsTrigger>
+                        {unitTabs.map((u) => (
+                            <TabsTrigger key={u} value={String(u)}>
+                                U{u}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
+                </Tabs>
+            )}
 
-            <Dialog open={!!selectedCourse} onOpenChange={(open) => !open && setSelectedCourse(null)}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Editar Calificación</DialogTitle>
-                        <DialogDescription>
-                            {selectedCourse?.courseName}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label>Calificación Final</Label>
-                            <Input
-                                type="number"
-                                min="0"
-                                max="10"
-                                step="0.1"
-                                value={gradeInput}
-                                onChange={(e) => setGradeInput(e.target.value)}
-                            />
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="global" checked={isGlobal} onCheckedChange={(c) => setIsGlobal(!!c)} />
-                            <Label htmlFor="global">Es Evaluación Global / Extraordinario</Label>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setSelectedCourse(null)}>Cancelar</Button>
-                        <Button onClick={handleSaveGrade} disabled={isPending}>Guardar</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <div className="rounded-lg border">
+                <Table>
+                    <TableHeader>
+                        <TableRow className="bg-muted/50">
+                            <TableHead className="w-10 text-center">No.</TableHead>
+                            <TableHead>Nombre del Curso</TableHead>
+                            {showAll ? (
+                                <>
+                                    {unitTabs.map((u) => (
+                                        <TableHead key={u} className="text-center">
+                                            U{u}
+                                        </TableHead>
+                                    ))}
+                                    <TableHead className="text-center">Prom.</TableHead>
+                                    <TableHead className="text-center">Extra.</TableHead>
+                                    <TableHead className="text-center font-semibold">Final</TableHead>
+                                </>
+                            ) : (
+                                <TableHead className="text-center">U{selectedUnit}</TableHead>
+                            )}
+                            <TableHead className="text-center">Asist.</TableHead>
+                            <TableHead className="text-center">Total</TableHead>
+                            <TableHead className="text-center">%</TableHead>
+                            <TableHead className="text-center">Calidad</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {visibleRows.length === 0 ? (
+                            <TableRow>
+                                <TableCell
+                                    colSpan={showAll ? 8 + unitTabs.length : 8}
+                                    className="py-8 text-center text-muted-foreground"
+                                >
+                                    No hay registros académicos.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            visibleRows.map((row, idx) => {
+                                const { label, pass } = statusLabel(row)
+                                const gradeByUnit = Object.fromEntries(
+                                    row.unitGrades.map((ug) => [ug.unitNumber, ug.grade])
+                                )
+                                const selectedGrade =
+                                    !showAll && typeof selectedUnit === "number"
+                                        ? gradeByUnit[selectedUnit]
+                                        : undefined
+
+                                const unitAtt =
+                                    !showAll && typeof selectedUnit === "number"
+                                        ? row.unitAttendance.find((a) => a.unitNumber === selectedUnit)
+                                        : null
+
+                                const displayPresent = unitAtt ? unitAtt.present : row.attendancesPresent
+                                const displayTotal   = unitAtt ? unitAtt.total   : row.attendancesTotal
+                                const displayPct     = unitAtt ? unitAtt.percentage : row.attendancePercentage
+
+                                return (
+                                    <TableRow key={row.id}>
+                                        <TableCell className="text-center text-muted-foreground">
+                                            {idx + 1}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="font-medium">{row.courseName}</div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {row.courseCode}
+                                                {row.courseSemester != null &&
+                                                    ` · Sem. ${row.courseSemester}`}
+                                                {" · "}
+                                                <span className="italic">{row.schoolYearName}</span>
+                                            </div>
+                                        </TableCell>
+                                        {showAll ? (
+                                            <>
+                                                {unitTabs.map((u) => (
+                                                    <TableCell key={u} className="text-center">
+                                                        {fmt(gradeByUnit[u])}
+                                                    </TableCell>
+                                                ))}
+                                                <TableCell className="text-center">
+                                                    {fmt(row.unitsAverage)}
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    {fmt(row.extraordinaryGrade)}
+                                                </TableCell>
+                                                <TableCell className="text-center font-bold">
+                                                    {fmt(row.finalGrade)}
+                                                </TableCell>
+                                            </>
+                                        ) : (
+                                            <TableCell className="text-center font-medium">
+                                                {fmt(selectedGrade)}
+                                            </TableCell>
+                                        )}
+                                        <TableCell className="text-center">
+                                            {displayPresent != null ? displayPresent : "—"}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            {displayTotal != null ? displayTotal : "—"}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            {displayPct != null ? `${displayPct}%` : "—"}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            {pass === null ? (
+                                                <Badge variant="outline" className="text-xs">
+                                                    {label}
+                                                </Badge>
+                                            ) : (
+                                                <Badge
+                                                    className={cn(
+                                                        "text-xs",
+                                                        pass
+                                                            ? "bg-green-600 text-white hover:bg-green-700"
+                                                            : "bg-destructive text-destructive-foreground"
+                                                    )}
+                                                >
+                                                    {label}
+                                                </Badge>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
         </div>
     )
 }

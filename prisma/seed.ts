@@ -15,28 +15,26 @@ const cuid = () => randomBytes(12).toString("base64url");
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("🌱 Sembrando base de datos — Escuelas Normales del Estado de México…");
+  console.log("🌱 Sembrando base de datos — Escuela Normal Rural de Valle de Bravo…");
 
-  // Hash único para todos los usuarios
   const PWD = await hash("password123", 10);
   const NOW = new Date();
 
   // ── 1. Administrador ──────────────────────────────────────────────────────
 
   const adminUser = await prisma.user.upsert({
-    where: { email: "admin@normales.com" },
+    where: { email: "admin@normalvalle.edu.mx" },
     update: {},
     create: {
       id: cuid(),
-      name: "Administrador",
-      lastName: "del Sistema",
-      email: "admin@normales.com",
+      name: "Sistema",
+      lastName: "Administrativo",
+      email: "admin@normalvalle.edu.mx",
       emailVerified: true,
       role: "ADMIN",
     },
   });
 
-  // Account — campos requeridos: id, accountId, providerId, userId, createdAt, updatedAt
   await prisma.account.upsert({
     where: { id: "acc-admin" },
     update: {},
@@ -54,13 +52,13 @@ async function main() {
   // ── 2. Institución ────────────────────────────────────────────────────────
 
   const instUser = await prisma.user.upsert({
-    where: { email: "direccion@normales.com" },
+    where: { email: "direccion@normalvalle.edu.mx" },
     update: {},
     create: {
       id: cuid(),
-      name: "Benemérita y Centenaria",
-      lastName: "Escuela Normal del Estado de México",
-      email: "direccion@normales.com",
+      name: "Escuela Normal Rural",
+      lastName: "de Valle de Bravo",
+      email: "direccion@normalvalle.edu.mx",
       emailVerified: true,
       role: "INSTITUTION",
     },
@@ -86,35 +84,35 @@ async function main() {
     create: {
       id: cuid(),
       userId: instUser.id,
-      slug: "becenm",
-      address: "Av. Nezahualcóyotl S/N, Toluca, Estado de México",
+      slug: "normal-valle",
+      address: "Carretera Valle de Bravo - Toluca Km 5, Estado de México",
       enableGlobalEvaluation: true,
-      globalEvaluationWeight: 0.3,
+      globalEvaluationWeight: 0.25,
     },
   });
 
   // ── 3. Licenciaturas ──────────────────────────────────────────────────────
 
   const careerLEP = await prisma.career.upsert({
-    where: { code: "LEP" },
+    where: { code: "LPRI" },
     update: {},
     create: {
       id: cuid(),
-      name: "Licenciatura en Educación Primaria",
-      code: "LEP",
-      description: "Formación de docentes para el nivel de educación primaria.",
+      name: "Licenciatura en Educación Primaria Intercultural",
+      code: "LPRI",
+      description: "Formación docente con enfoque intercultural para primaria.",
       totalSemesters: 8,
     },
   });
 
   const careerLEPresc = await prisma.career.upsert({
-    where: { code: "LEPREESC" },
+    where: { code: "LPRE" },
     update: {},
     create: {
       id: cuid(),
-      name: "Licenciatura en Educación Preescolar",
-      code: "LEPREESC",
-      description: "Formación de docentes para el nivel de educación preescolar.",
+      name: "Licenciatura en Educación Preescolar Comunitaria",
+      code: "LPRE",
+      description: "Formación docente para atención educativa en contextos comunitarios.",
       totalSemesters: 8,
     },
   });
@@ -132,39 +130,37 @@ async function main() {
   // ── 4. Asignaturas ────────────────────────────────────────────────────────
 
   const lepCourses = [
-    // Semestre 1
-    { name: "Bases Filosóficas, Legales y Organizativas del Sistema Educativo Mexicano", code: "LEP-101", credits: 4.5, hours: 6, semester: 1 },
-    { name: "Psicología del Desarrollo Infantil (0-12 años)", code: "LEP-102", credits: 4.5, hours: 6, semester: 1 },
-    { name: "Propósitos y Contenidos de la Educación Básica I", code: "LEP-103", credits: 4.5, hours: 6, semester: 1 },
-    { name: "Iniciación al Trabajo Docente", code: "LEP-104", credits: 6, hours: 8, semester: 1 },
-    // Semestre 2
-    { name: "El Niño: Desarrollo y Proceso de Construcción del Conocimiento", code: "LEP-201", credits: 4.5, hours: 6, semester: 2 },
-    { name: "Propósitos y Contenidos de la Educación Básica II", code: "LEP-202", credits: 4.5, hours: 6, semester: 2 },
-    { name: "Observación y Práctica Docente I", code: "LEP-203", credits: 6, hours: 8, semester: 2 },
-    // Semestre 3
-    { name: "Adquisición y Enseñanza de la Lengua Escrita", code: "LEP-301", credits: 4.5, hours: 6, semester: 3 },
-    { name: "Matemáticas y su Enseñanza I", code: "LEP-302", credits: 4.5, hours: 6, semester: 3 },
-    { name: "Observación y Práctica Docente II", code: "LEP-303", credits: 6, hours: 8, semester: 3 },
+    { name: "Fundamentos de la Educación Intercultural", code: "LPRI-101", credits: 4.5, hours: 6, semester: 1 },
+    { name: "Desarrollo Infantil y Contexto Sociocultural", code: "LPRI-102", credits: 4.5, hours: 6, semester: 1 },
+    { name: "Didáctica de la Lengua en Primaria", code: "LPRI-103", credits: 4.5, hours: 6, semester: 1 },
+    { name: "Práctica Docente Inicial", code: "LPRI-104", credits: 6, hours: 8, semester: 1 },
+
+    { name: "Aprendizaje y Cognición", code: "LPRI-201", credits: 4.5, hours: 6, semester: 2 },
+    { name: "Didáctica de las Matemáticas I", code: "LPRI-202", credits: 4.5, hours: 6, semester: 2 },
+    { name: "Observación Escolar", code: "LPRI-203", credits: 6, hours: 8, semester: 2 },
+
+    { name: "Lenguaje y Comunicación", code: "LPRI-301", credits: 4.5, hours: 6, semester: 3 },
+    { name: "Pensamiento Matemático", code: "LPRI-302", credits: 4.5, hours: 6, semester: 3 },
+    { name: "Práctica Docente II", code: "LPRI-303", credits: 6, hours: 8, semester: 3 },
   ];
 
   const leprescCourses = [
-    // Semestre 1
-    { name: "Bases Filosóficas, Legales y Organizativas del Sistema Educativo Mexicano", code: "LEPREESC-101", credits: 4.5, hours: 6, semester: 1 },
-    { name: "Psicología del Desarrollo Infantil (0-6 años)", code: "LEPREESC-102", credits: 4.5, hours: 6, semester: 1 },
-    { name: "Propósitos y Contenidos de la Educación Preescolar", code: "LEPREESC-103", credits: 4.5, hours: 6, semester: 1 },
-    { name: "Iniciación al Trabajo Docente en Preescolar", code: "LEPREESC-104", credits: 6, hours: 8, semester: 1 },
-    // Semestre 2
-    { name: "El Juego en la Educación Preescolar", code: "LEPREESC-201", credits: 4.5, hours: 6, semester: 2 },
-    { name: "Desarrollo de Competencias en Preescolar", code: "LEPREESC-202", credits: 4.5, hours: 6, semester: 2 },
-    { name: "Observación y Práctica Docente en Preescolar I", code: "LEPREESC-203", credits: 6, hours: 8, semester: 2 },
+    { name: "Educación Inicial y Contexto Social", code: "LPRE-101", credits: 4.5, hours: 6, semester: 1 },
+    { name: "Desarrollo Infantil Temprano", code: "LPRE-102", credits: 4.5, hours: 6, semester: 1 },
+    { name: "Didáctica del Juego", code: "LPRE-103", credits: 4.5, hours: 6, semester: 1 },
+    { name: "Práctica Educativa Inicial", code: "LPRE-104", credits: 6, hours: 8, semester: 1 },
+
+    { name: "Juego y Aprendizaje", code: "LPRE-201", credits: 4.5, hours: 6, semester: 2 },
+    { name: "Desarrollo Socioemocional", code: "LPRE-202", credits: 4.5, hours: 6, semester: 2 },
+    { name: "Observación en Preescolar", code: "LPRE-203", credits: 6, hours: 8, semester: 2 },
   ];
 
-  const createdCourses: Awaited<ReturnType<typeof prisma.course.upsert>>[] = [];
+  const createdCourses = [];
 
   for (const [rawList, careerId] of [
     [lepCourses, careerLEP.id],
     [leprescCourses, careerLEPresc.id],
-  ] as [typeof lepCourses, string][]) {
+  ]) {
     for (const c of rawList) {
       const course = await prisma.course.upsert({
         where: { code: c.code },
@@ -184,12 +180,17 @@ async function main() {
       });
       createdCourses.push(course);
 
-      // 3 unidades por asignatura
       for (let u = 1; u <= 3; u++) {
         await prisma.unit.upsert({
           where: { courseId_unitNumber: { courseId: course.id, unitNumber: u } },
           update: {},
-          create: { id: cuid(), name: `Unidad ${u}`, unitNumber: u, weight: 1.0, courseId: course.id },
+          create: {
+            id: cuid(),
+            name: `Unidad ${u}`,
+            unitNumber: u,
+            weight: 1.0,
+            courseId: course.id,
+          },
         });
       }
     }
@@ -199,29 +200,29 @@ async function main() {
 
   const teacherData = [
     {
-      email: "mtra.gonzalez@normales.com",
-      name: "María Elena",
-      lastName: "González Vargas",
-      employeeId: "BECENM-001",
-      department: "Formación Docente",
+      email: "mtra.lopez@normalvalle.edu.mx",
+      name: "Ana Laura",
+      lastName: "López Martínez",
+      employeeId: "NV-001",
+      department: "Pedagogía",
     },
     {
-      email: "mtro.hernandez@normales.com",
-      name: "Roberto",
-      lastName: "Hernández Jiménez",
-      employeeId: "BECENM-002",
-      department: "Ciencias de la Educación",
+      email: "mtro.ramirez@normalvalle.edu.mx",
+      name: "Luis Fernando",
+      lastName: "Ramírez Ortega",
+      employeeId: "NV-002",
+      department: "Didáctica",
     },
     {
-      email: "mtra.sanchez@normales.com",
-      name: "Patricia",
-      lastName: "Sánchez Moreno",
-      employeeId: "BECENM-003",
-      department: "Educación Preescolar",
+      email: "mtra.cruz@normalvalle.edu.mx",
+      name: "Verónica",
+      lastName: "Cruz Aguilar",
+      employeeId: "NV-003",
+      department: "Educación Inicial",
     },
   ];
 
-  const createdTeachers: Awaited<ReturnType<typeof prisma.teacher.upsert>>[] = [];
+  const createdTeachers = [];
 
   for (const t of teacherData) {
     const tUser = await prisma.user.upsert({
@@ -268,160 +269,17 @@ async function main() {
     createdTeachers.push(teacher);
   }
 
-  // ── 6. Ciclo escolar + periodos de evaluación ─────────────────────────────
-
-  const schoolYear = await prisma.schoolYear.upsert({
-    where: { id: "sy-2025-2026" },
-    update: {},
-    create: {
-      id: "sy-2025-2026",
-      name: "2025–2026",
-      startDate: new Date("2025-08-18"),
-      endDate: new Date("2026-06-30"),
-      status: "ACTIVE",
-    },
-  });
-
-  const evalPeriodsData = [
-    { num: 1, name: "Primer Bimestre",  open: new Date("2025-09-29"), close: new Date("2025-10-10"), status: "CLOSED" },
-    { num: 2, name: "Segundo Bimestre", open: new Date("2025-11-24"), close: new Date("2025-12-05"), status: "CLOSED" },
-    { num: 3, name: "Tercer Bimestre",  open: new Date("2026-02-09"), close: new Date("2026-02-20"), status: "OPEN"   },
-  ] as const;
-
-  const createdEvalPeriods: Awaited<ReturnType<typeof prisma.evaluationPeriod.upsert>>[] = [];
-
-  for (const ep of evalPeriodsData) {
-    const period = await prisma.evaluationPeriod.upsert({
-      where: {
-        schoolYearId_evaluationNumber_isExtraordinary: {
-          schoolYearId: schoolYear.id,
-          evaluationNumber: ep.num,
-          isExtraordinary: false,
-        },
-      },
-      update: {},
-      create: {
-        id: cuid(),
-        schoolYearId: schoolYear.id,
-        name: ep.name,
-        evaluationNumber: ep.num,
-        isExtraordinary: false,
-        status: ep.status,
-        openDate: ep.open,
-        closeDate: ep.close,
-      },
-    });
-    createdEvalPeriods.push(period);
-  }
-
-  // ── 7. Grupos ─────────────────────────────────────────────────────────────
-
-  const groupLEP1 = await prisma.group.upsert({
-    where: {
-      institutionId_name_schoolYearId: {
-        institutionId: institution.id,
-        name: "LEP-1A",
-        schoolYearId: schoolYear.id,
-      },
-    },
-    update: {},
-    create: {
-      id: cuid(),
-      name: "LEP-1A",
-      groupType: "CAREER_SEMESTER",
-      semester: 1,
-      careerId: careerLEP.id,
-      institutionId: institution.id,
-      schoolYearId: schoolYear.id,
-    },
-  });
-
-  const groupLEPresc1 = await prisma.group.upsert({
-    where: {
-      institutionId_name_schoolYearId: {
-        institutionId: institution.id,
-        name: "LEPREESC-1A",
-        schoolYearId: schoolYear.id,
-      },
-    },
-    update: {},
-    create: {
-      id: cuid(),
-      name: "LEPREESC-1A",
-      groupType: "CAREER_SEMESTER",
-      semester: 1,
-      careerId: careerLEPresc.id,
-      institutionId: institution.id,
-      schoolYearId: schoolYear.id,
-    },
-  });
-
-  const lepSem1Courses     = createdCourses.filter((c) => c.careerId === careerLEP.id     && c.semester === 1);
-  const leprescSem1Courses = createdCourses.filter((c) => c.careerId === careerLEPresc.id && c.semester === 1);
-
-  // Asignaturas → grupos
-  for (const course of lepSem1Courses) {
-    await prisma.groupCourse.upsert({
-      where: { groupId_courseId: { groupId: groupLEP1.id, courseId: course.id } },
-      update: {},
-      create: { id: cuid(), groupId: groupLEP1.id, courseId: course.id },
-    });
-  }
-
-  for (const course of leprescSem1Courses) {
-    await prisma.groupCourse.upsert({
-      where: { groupId_courseId: { groupId: groupLEPresc1.id, courseId: course.id } },
-      update: {},
-      create: { id: cuid(), groupId: groupLEPresc1.id, courseId: course.id },
-    });
-  }
-
-  // Docentes → grupos (titular por asignatura)
-  const teacherAssignments: { teacherIdx: number; groupId: string; courses: typeof lepSem1Courses }[] = [
-    { teacherIdx: 0, groupId: groupLEP1.id,     courses: lepSem1Courses.slice(0, 2)     },
-    { teacherIdx: 1, groupId: groupLEP1.id,     courses: lepSem1Courses.slice(2)        },
-    { teacherIdx: 2, groupId: groupLEPresc1.id, courses: leprescSem1Courses             },
-  ];
-
-  for (const { teacherIdx, groupId, courses } of teacherAssignments) {
-    const teacher = createdTeachers[teacherIdx];
-    if (!teacher) continue;
-    for (const course of courses) {
-      await prisma.teacherGroup.upsert({
-        where: {
-          teacherId_groupId_courseId: { teacherId: teacher.id, groupId, courseId: course.id },
-        },
-        update: {},
-        create: {
-          id: cuid(),
-          teacherId: teacher.id,
-          groupId,
-          courseId: course.id,
-          role: "TITULAR",
-        },
-      });
-    }
-  }
-
-  // ── 8. Normalistas (alumnos) ──────────────────────────────────────────────
+  // ── 8. Estudiantes ──────────────────────────────────────────────
 
   const studentData = [
-    // LEP
-    { email: "sofia.reyes@normales.com",    name: "Sofía",    lastName: "Reyes Contreras",   enrollmentId: "2025-LEP-001", curp: "RECS050312MMCYNSF5", birthDay: new Date("2005-03-12"), careerId: careerLEP.id,     groupId: groupLEP1.id     },
-    { email: "diana.luna@normales.com",     name: "Diana",    lastName: "Luna Espinoza",      enrollmentId: "2025-LEP-002", curp: "LUED060820MMCNSNB4", birthDay: new Date("2006-08-20"), careerId: careerLEP.id,     groupId: groupLEP1.id     },
-    { email: "carlos.mendoza@normales.com", name: "Carlos",   lastName: "Mendoza Ríos",       enrollmentId: "2025-LEP-003", curp: "MERC050605HMCSNRA2", birthDay: new Date("2005-06-05"), careerId: careerLEP.id,     groupId: groupLEP1.id     },
-    { email: "ivan.gutierrez@normales.com", name: "Iván",     lastName: "Gutiérrez Flores",   enrollmentId: "2025-LEP-004", curp: "GUFI060114HMCTLVB1", birthDay: new Date("2006-01-14"), careerId: careerLEP.id,     groupId: groupLEP1.id     },
-    // LEPREESC
-    { email: "paola.torres@normales.com",   name: "Paola",    lastName: "Torres Vázquez",     enrollmentId: "2025-LEPREESC-001", curp: "TOVP060930MMCRZLA3", birthDay: new Date("2006-09-30"), careerId: careerLEPresc.id, groupId: groupLEPresc1.id },
-    { email: "lucia.morales@normales.com",  name: "Lucía",    lastName: "Morales Castillo",   enrollmentId: "2025-LEPREESC-002", curp: "MOCL050422MMCRSCA8", birthDay: new Date("2005-04-22"), careerId: careerLEPresc.id, groupId: groupLEPresc1.id },
-    { email: "andrea.silva@normales.com",   name: "Andrea",   lastName: "Silva Pedraza",      enrollmentId: "2025-LEPREESC-003", curp: "SIPA061205MMCLNDB9", birthDay: new Date("2006-12-05"), careerId: careerLEPresc.id, groupId: groupLEPresc1.id },
-  ];
+    { email: "miguel.santos@normalvalle.edu.mx",   name: "Miguel",   lastName: "Santos Ruiz",  enrollmentId: "2025-LPRI-001", curp: "SARL050101HMCRZNA1", birthDay: new Date("2005-01-01"), careerId: careerLEP.id,     currentSemester: 2 },
+    { email: "fernanda.perez@normalvalle.edu.mx",  name: "Fernanda", lastName: "Pérez Díaz",   enrollmentId: "2025-LPRI-002", curp: "PEDF060202MMCRZNB2", birthDay: new Date("2006-02-02"), careerId: careerLEP.id,     currentSemester: 2 },
+    { email: "karla.rivera@normalvalle.edu.mx",    name: "Karla",    lastName: "Rivera Soto",  enrollmentId: "2025-LPRE-001", curp: "RISK060303MMCRZNC3", birthDay: new Date("2006-03-03"), careerId: careerLEPresc.id, currentSemester: 1 },
+  ]
 
-  // Período cerrado más reciente para calificaciones
-  const gradingPeriod = createdEvalPeriods[1]!; // Segundo Bimestre (CLOSED)
+  const createdStudents: { id: string; userId: string; careerId: string; currentSemester: number }[] = []
 
   for (const s of studentData) {
-    // User
     const sUser = await prisma.user.upsert({
       where: { email: s.email },
       update: {},
@@ -434,9 +292,8 @@ async function main() {
         role: "STUDENT",
         institutionId: institution.id,
       },
-    });
+    })
 
-    // Account — campos exactos del modelo Account
     await prisma.account.upsert({
       where: { id: `acc-${s.enrollmentId}` },
       update: {},
@@ -449,12 +306,11 @@ async function main() {
         createdAt: NOW,
         updatedAt: NOW,
       },
-    });
+    })
 
-    // Student
     const student = await prisma.student.upsert({
       where: { enrollmentId: s.enrollmentId },
-      update: {},
+      update: { currentSemester: s.currentSemester },
       create: {
         id: cuid(),
         enrollmentId: s.enrollmentId,
@@ -464,79 +320,295 @@ async function main() {
         userId: sUser.id,
         institutionId: institution.id,
         careerId: s.careerId,
-        currentSemester: 1,
+        currentSemester: s.currentSemester,
       },
-    });
+    })
 
-    // Grupo
-    await prisma.studentGroup.upsert({
-      where: { studentId_groupId: { studentId: student.id, groupId: s.groupId } },
+    createdStudents.push({ id: student.id, userId: sUser.id, careerId: s.careerId, currentSemester: s.currentSemester })
+  }
+
+  const [studentMiguel, studentFernanda, studentKarla] = createdStudents
+
+  // ── 9. Ciclos escolares ───────────────────────────────────────────────────
+
+  const sy2425 = await prisma.schoolYear.upsert({
+    where: { id: "sy-2024-2025" },
+    update: {},
+    create: {
+      id: "sy-2024-2025",
+      name: "2024-2025",
+      startDate: new Date("2024-08-26"),
+      endDate:   new Date("2025-06-27"),
+      status: "CLOSED",
+    },
+  })
+
+  const sy2526 = await prisma.schoolYear.upsert({
+    where: { id: "sy-2025-2026" },
+    update: {},
+    create: {
+      id: "sy-2025-2026",
+      name: "2025-2026",
+      startDate: new Date("2025-08-25"),
+      endDate:   new Date("2026-06-30"),
+      status: "ACTIVE",
+    },
+  })
+
+  // ── 10. Períodos de evaluación 2025-2026 ──────────────────────────────────
+
+  const ep1 = await prisma.evaluationPeriod.upsert({
+    where: { id: "ep-2526-1" },
+    update: {},
+    create: { id: "ep-2526-1", schoolYearId: sy2526.id, name: "1er Parcial", evaluationNumber: 1, isExtraordinary: false, status: "CLOSED", openDate: new Date("2025-09-01"), closeDate: new Date("2025-10-31") },
+  })
+
+  const ep2 = await prisma.evaluationPeriod.upsert({
+    where: { id: "ep-2526-2" },
+    update: {},
+    create: { id: "ep-2526-2", schoolYearId: sy2526.id, name: "2do Parcial", evaluationNumber: 2, isExtraordinary: false, status: "CLOSED", openDate: new Date("2025-11-03"), closeDate: new Date("2026-01-30") },
+  })
+
+  await prisma.evaluationPeriod.upsert({
+    where: { id: "ep-2526-3" },
+    update: {},
+    create: { id: "ep-2526-3", schoolYearId: sy2526.id, name: "3er Parcial", evaluationNumber: 3, isExtraordinary: false, status: "OPEN",   openDate: new Date("2026-02-02"), closeDate: new Date("2026-04-30") },
+  })
+
+  // ── 11. Grupos 2025-2026 ──────────────────────────────────────────────────
+
+  const grpLEP2 = await prisma.group.upsert({
+    where: { institutionId_name_schoolYearId: { institutionId: institution.id, name: "2°A LEP", schoolYearId: sy2526.id } },
+    update: {},
+    create: { id: "grp-lep-2a-2526", name: "2°A LEP", groupType: "CAREER_SEMESTER", semester: 2, careerId: careerLEP.id, institutionId: institution.id, schoolYearId: sy2526.id },
+  })
+
+  const grpLPRE1 = await prisma.group.upsert({
+    where: { institutionId_name_schoolYearId: { institutionId: institution.id, name: "1°A LPRE", schoolYearId: sy2526.id } },
+    update: {},
+    create: { id: "grp-lpre-1a-2526", name: "1°A LPRE", groupType: "CAREER_SEMESTER", semester: 1, careerId: careerLEPresc.id, institutionId: institution.id, schoolYearId: sy2526.id },
+  })
+
+  // ── 12. Asignaturas por grupo ─────────────────────────────────────────────
+
+  const findCourse = (code: string) => createdCourses.find(c => c.code === code)!
+
+  const lepSem2Courses  = ["LPRI-201", "LPRI-202", "LPRI-203"].map(findCourse)
+  const lepreSem1Courses = ["LPRE-101", "LPRE-102", "LPRE-103", "LPRE-104"].map(findCourse)
+
+  for (const c of lepSem2Courses) {
+    await prisma.groupCourse.upsert({
+      where: { groupId_courseId: { groupId: grpLEP2.id, courseId: c.id } },
       update: {},
-      create: { id: cuid(), studentId: student.id, groupId: s.groupId },
-    });
+      create: { id: cuid(), groupId: grpLEP2.id, courseId: c.id },
+    })
+  }
+  for (const c of lepreSem1Courses) {
+    await prisma.groupCourse.upsert({
+      where: { groupId_courseId: { groupId: grpLPRE1.id, courseId: c.id } },
+      update: {},
+      create: { id: cuid(), groupId: grpLPRE1.id, courseId: c.id },
+    })
+  }
 
-    // Inscripciones en asignaturas de 1er semestre
-    const sem1Courses = s.careerId === careerLEP.id ? lepSem1Courses : leprescSem1Courses;
+  // ── 13. Docentes por grupo ────────────────────────────────────────────────
 
-    for (const course of sem1Courses) {
-      const enrollment = await prisma.enrollment.upsert({
-        where: {
-          studentId_courseId_schoolYearId: {
-            studentId: student.id,
-            courseId: course.id,
-            schoolYearId: schoolYear.id,
-          },
-        },
+  const [tLopez, tRamirez, tCruz] = createdTeachers
+
+  for (const c of lepSem2Courses.slice(0, 2)) {
+    await prisma.teacherGroup.upsert({
+      where: { teacherId_groupId_courseId: { teacherId: tLopez.id, groupId: grpLEP2.id, courseId: c.id } },
+      update: {},
+      create: { id: cuid(), teacherId: tLopez.id, groupId: grpLEP2.id, courseId: c.id },
+    })
+  }
+  await prisma.teacherGroup.upsert({
+    where: { teacherId_groupId_courseId: { teacherId: tRamirez.id, groupId: grpLEP2.id, courseId: lepSem2Courses[2].id } },
+    update: {},
+    create: { id: cuid(), teacherId: tRamirez.id, groupId: grpLEP2.id, courseId: lepSem2Courses[2].id },
+  })
+  for (const c of lepreSem1Courses) {
+    await prisma.teacherGroup.upsert({
+      where: { teacherId_groupId_courseId: { teacherId: tCruz.id, groupId: grpLPRE1.id, courseId: c.id } },
+      update: {},
+      create: { id: cuid(), teacherId: tCruz.id, groupId: grpLPRE1.id, courseId: c.id },
+    })
+  }
+
+  // ── 14. Inscripciones, calificaciones y asistencia 2025-2026 ─────────────
+
+  // Fetch units for each course: Map<courseId, Unit[]>
+  const allUnits = await prisma.unit.findMany({
+    where: { courseId: { in: createdCourses.map(c => c.id) } },
+    orderBy: { unitNumber: "asc" },
+  })
+  const unitsByCourse = allUnits.reduce<Record<string, typeof allUnits>>((acc, u) => {
+    ;(acc[u.courseId] ??= []).push(u)
+    return acc
+  }, {})
+
+  // Helper: dates for attendance sessions (weekly starting from start, n sessions)
+  function sessionDates(start: Date, n: number): Date[] {
+    return Array.from({ length: n }, (_, i) => {
+      const d = new Date(start)
+      d.setDate(d.getDate() + i * 7)
+      return d
+    })
+  }
+
+  // Grade plan: [studentId, courseId, groupId, [[u1grade, u2grade], ...] ]
+  // unit 3 left ungraded (3rd Parcial still open)
+  const enrollmentPlan: Array<{
+    studentId: string
+    courseId: string
+    groupId: string
+    registeredById: string
+    unitGrades: (number | null)[]   // index 0 = unit1, 1 = unit2, 2 = unit3
+    u1Sessions: Date[]
+    u2Sessions: Date[]
+  }> = []
+
+  const lepU1Start = new Date("2025-09-01")
+  const lepU2Start = new Date("2025-11-03")
+  const lpU1Start  = new Date("2025-09-01")
+  const lpU2Start  = new Date("2025-11-03")
+
+  // Miguel and Fernanda → LEP sem 2 courses
+  const lepSem2GradesMiguel   = [[8.5, 9.0], [7.5, 8.0], [9.0, 9.5]]
+  const lepSem2GradesFernanda = [[9.5, 10.0], [8.0, 8.5], [7.0, 7.5]]
+
+  for (const [si, student] of [[studentMiguel, lepSem2GradesMiguel], [studentFernanda, lepSem2GradesFernanda]] as const) {
+    for (const [ci, course] of lepSem2Courses.entries()) {
+      const teacher = ci < 2 ? tLopez : tRamirez
+      enrollmentPlan.push({
+        studentId: si.id,
+        courseId: course.id,
+        groupId: grpLEP2.id,
+        registeredById: teacher.id,
+        unitGrades: [student[ci][0], student[ci][1], null],
+        u1Sessions: sessionDates(lepU1Start, 8),
+        u2Sessions: sessionDates(lepU2Start, 8),
+      })
+    }
+  }
+
+  // Karla → LPRE sem 1 courses
+  const lepre1GradesKarla = [[8.0, 7.0], [9.5, 9.0], [7.5, 8.0], [8.5, 9.0]]
+  for (const [ci, course] of lepreSem1Courses.entries()) {
+    enrollmentPlan.push({
+      studentId: studentKarla.id,
+      courseId: course.id,
+      groupId: grpLPRE1.id,
+      registeredById: tCruz.id,
+      unitGrades: [lepre1GradesKarla[ci][0], lepre1GradesKarla[ci][1], null],
+      u1Sessions: sessionDates(lpU1Start, 8),
+      u2Sessions: sessionDates(lpU2Start, 8),
+    })
+  }
+
+  for (const plan of enrollmentPlan) {
+    const enrollment = await prisma.enrollment.upsert({
+      where: { studentId_courseId_schoolYearId: { studentId: plan.studentId, courseId: plan.courseId, schoolYearId: sy2526.id } },
+      update: {},
+      create: {
+        id: cuid(),
+        studentId: plan.studentId,
+        courseId: plan.courseId,
+        groupId: plan.groupId,
+        schoolYearId: sy2526.id,
+        status: "ENROLLED",
+      },
+    })
+
+    const units = unitsByCourse[plan.courseId] ?? []
+
+    // Unit grades (ordinary, units 1 & 2 only)
+    for (const [ui, unit] of units.entries()) {
+      const grade = plan.unitGrades[ui]
+      if (grade === null) continue
+      const ep = ui === 0 ? ep1 : ep2
+      await prisma.unitGrade.upsert({
+        where: { enrollmentId_unitId_gradeType: { enrollmentId: enrollment.id, unitId: unit.id, gradeType: "ORDINARY" } },
         update: {},
         create: {
           id: cuid(),
-          studentId: student.id,
-          courseId: course.id,
-          groupId: s.groupId,
-          schoolYearId: schoolYear.id,
-          status: "ENROLLED",
+          enrollmentId: enrollment.id,
+          unitId: unit.id,
+          evaluationPeriodId: ep.id,
+          grade,
+          gradeType: "ORDINARY",
+          assignedById: plan.registeredById,
         },
-      });
+      })
+    }
 
-      const units = await prisma.unit.findMany({ where: { courseId: course.id } });
+    // Attendance for units 1 & 2
+    const attendanceSessions: Array<{ unit: typeof units[0]; dates: Date[] }> = []
+    if (units[0]) attendanceSessions.push({ unit: units[0], dates: plan.u1Sessions })
+    if (units[1]) attendanceSessions.push({ unit: units[1], dates: plan.u2Sessions })
 
-      // Una calificación ordinaria por unidad (constraint unique: enrollmentId+unitId+gradeType)
-      for (const unit of units) {
-        const grade = parseFloat((7 + Math.random() * 3).toFixed(1)); // 7.0–10.0
-        await prisma.unitGrade.upsert({
-          where: {
-            enrollmentId_unitId_gradeType: {
-              enrollmentId: enrollment.id,
-              unitId: unit.id,
-              gradeType: "ORDINARY",
-            },
-          },
+    for (const { unit, dates } of attendanceSessions) {
+      for (const [di, date] of dates.entries()) {
+        await prisma.attendance.upsert({
+          where: { enrollmentId_unitId_sessionDate: { enrollmentId: enrollment.id, unitId: unit.id, sessionDate: date } },
           update: {},
           create: {
             id: cuid(),
             enrollmentId: enrollment.id,
             unitId: unit.id,
-            evaluationPeriodId: gradingPeriod.id,
-            grade,
-            gradeType: "ORDINARY",
+            sessionDate: date,
+            present: di !== 2,   // miss session 3 (index 2) for variety
+            justified: false,
+            registeredById: plan.registeredById,
           },
-        });
+        })
       }
     }
   }
 
+  // ── 15. Historial académico 2024-2025 (Miguel y Fernanda, semestre 1) ─────
+
+  const lepSem1History = [
+    { code: "LPRI-101", name: "Fundamentos de la Educación Intercultural",    credits: 4.5, semester: 1 },
+    { code: "LPRI-102", name: "Desarrollo Infantil y Contexto Sociocultural", credits: 4.5, semester: 1 },
+    { code: "LPRI-103", name: "Didáctica de la Lengua en Primaria",           credits: 4.5, semester: 1 },
+    { code: "LPRI-104", name: "Práctica Docente Inicial",                     credits: 6.0, semester: 1 },
+  ]
+
+  const historicalGradesMiguel   = [8.8, 7.9, 9.3, 8.5]
+  const historicalGradesFernanda = [9.6, 8.7, 7.4, 9.1]
+
+  for (const [si, grades, histId] of [
+    [studentMiguel,   historicalGradesMiguel,   "hist-miguel"],
+    [studentFernanda, historicalGradesFernanda, "hist-fernanda"],
+  ] as const) {
+    for (const [ci, h] of lepSem1History.entries()) {
+      const course = findCourse(h.code)
+      const fg = grades[ci]
+      await prisma.academicHistory.upsert({
+        where: { id: `${histId}-${h.code}` },
+        update: {},
+        create: {
+          id: `${histId}-${h.code}`,
+          studentId: si.id,
+          courseId: course.id,
+          courseName: h.name,
+          courseCode: h.code,
+          courseCredits: h.credits,
+          schoolYearName: sy2425.name,
+          semester: h.semester,
+          finalGrade: fg,
+          passed: fg >= 6,
+          status: "PASSED",
+          wasExtraordinary: false,
+          unitsAverage: fg,
+          attendancePercentage: 87 + ci * 2,
+        },
+      })
+    }
+  }
+
   console.log("✅ Siembra completa.");
-  console.log("\nContraseña de todos los usuarios: password123");
-  console.log("\nUsuarios creados:");
-  console.log("  ADMIN        admin@normales.com");
-  console.log("  INSTITUCIÓN  direccion@normales.com");
-  console.log("  DOCENTES     mtra.gonzalez@normales.com");
-  console.log("               mtro.hernandez@normales.com");
-  console.log("               mtra.sanchez@normales.com");
-  console.log("  ALUMNOS LEP  sofia.reyes@normales.com   diana.luna@normales.com");
-  console.log("               carlos.mendoza@normales.com ivan.gutierrez@normales.com");
-  console.log("  ALUMNOS LEPREESC  paola.torres@normales.com  lucia.morales@normales.com");
-  console.log("                    andrea.silva@normales.com");
 }
 
 main()

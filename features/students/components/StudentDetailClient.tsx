@@ -58,7 +58,51 @@ export function StudentDetailClient({ student }: StudentDetailClientProps) {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <StudentGradesView student={student} />
+                            <StudentGradesView rows={[
+                                ...student.enrollments.map((e: any) => {
+                                    const ordinary = (e.unitGrades ?? []).filter((ug: any) => ug.gradeType === "ORDINARY")
+                                    const extra = (e.unitGrades ?? []).filter((ug: any) => ug.gradeType === "EXTRAORDINARY")
+                                    const extraAvg = extra.length > 0
+                                        ? extra.reduce((s: number, g: any) => s + (g.grade ?? 0), 0) / extra.length
+                                        : null
+                                    return {
+                                        id: e.id,
+                                        type: "enrollment" as const,
+                                        courseName: e.course?.name ?? "",
+                                        courseCode: e.course?.code ?? "",
+                                        courseSemester: e.course?.semester ?? null,
+                                        evaluationCount: e.course?.evaluationCount ?? null,
+                                        unitGrades: ordinary.map((ug: any) => ({ unitNumber: ug.unit.unitNumber, grade: ug.grade })),
+                                        extraordinaryGrade: extraAvg,
+                                        unitsAverage: e.unitsAverage ?? null,
+                                        finalGrade: e.finalGrade ?? null,
+                                        status: e.status,
+                                        passed: e.status === "PASSED",
+                                        attendancesPresent: null,
+                                        attendancesTotal: null,
+                                        attendancePercentage: null,
+                                        schoolYearName: e.schoolYear?.name ?? "",
+                                    }
+                                }),
+                                ...student.academicHistory.map((h: any) => ({
+                                    id: h.id,
+                                    type: "history" as const,
+                                    courseName: h.courseName,
+                                    courseCode: h.courseCode,
+                                    courseSemester: h.semester ?? null,
+                                    evaluationCount: null,
+                                    unitGrades: [],
+                                    extraordinaryGrade: null,
+                                    unitsAverage: h.unitsAverage ?? null,
+                                    finalGrade: h.finalGrade ?? null,
+                                    status: h.status,
+                                    passed: h.passed,
+                                    attendancesPresent: null,
+                                    attendancesTotal: null,
+                                    attendancePercentage: h.attendancePercentage != null ? Math.round(h.attendancePercentage) : null,
+                                    schoolYearName: h.schoolYearName ?? "",
+                                })),
+                            ]} />
                         </CardContent>
                     </Card>
                 </TabsContent>
